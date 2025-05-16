@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html>
+
+<meta charset="UTF-8">
+
+<head>
+    <title>Messenger Demo</title>
+    <style>
+        body {
+            font-family: Arial;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        #auth,
+        #chat {
+            margin: 20px;
+            padding: 20px;
+            border: 1px solid #ddd;
+        }
+
+        .message {
+            margin: 10px 0;
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+        }
+
+        #voiceBtn {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Форма авторизации -->
+    <div id="auth">
+        <input type="email" id="email" placeholder="Email">
+        <input type="password" id="password" placeholder="Password">
+        <button onclick="register()">Register</button>
+        <button onclick="login()">Login</button>
+    </div>
+
+    <div id="currentRoom" style="margin:10px 0; font-weight:bold;"></div>
+
+    <button id="logoutBtn">Выйти</button>
+    <!-- Интерфейс чата -->
+    <div id="chat" style="display: none;">
+        <div id="rooms">
+            <button onclick="createRoom()">Create Room</button>
+            <div id="roomList"></div>
+        </div>
+
+        <div id="messages"></div>
+
+        <input type="text" id="messageInput" placeholder="Message">
+        <button onclick="sendMessage()">Send</button>
+        <button id="voiceBtn" onmousedown="startRecording()" onmouseup="stopRecording()">
+            🎤 Hold to record
+        </button>
+    </div>
+
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script>
+        let currentUser = null;
+        let currentRoom = null;
+        let socket = null;
+        let mediaRecorder = null;
+        let audioChunks = [];
+
+        // API методы
+        async function register() {
+            const response = await fetch('http://localhost:3000/api/auth/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: 'Test User',
+                    email: document.getElementById('email').value,
+                    password: document.getElementById('password').value
+                }),
+                credentials: 'include'
+            });
+            const data = await response.json();
+            console.log('Registered:', data);
+        }
+
+        socket.on('newMessage', (message) => {
+            console.log('Получено новое сообщение:', message);
+
+            // Проверяем тип сообщения
+            if (message.is_voice_message) {
+                addVoiceMessageToUI(message);
+            } else {
+                addTextMessageToUI(message);
+            }
+        });
+
+        async function login() {
+            const response = await fetch('http://localhost:3000/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    email: document.getElementById('email').value,
+                    password: document.getElementById('password').value
+                })
+            });
+
+            const data = await response.json();
+            if (data.token) {
+                localStorage.setItem('token', data.token);
+
+                // Запрос профиля
+                const profileRes = await fetch('http://localhost:3000/api/profile', {
+                    headers: { Authorization: `Bearer ${data.token}` }
+                });
+                currentUser = await profileRes.json();
+
+                initChat(data.token);
+            } else {
+                alert('Ошибка входа: ' + (data.error || 'Неизвестная ошибка'));
+            }
+        }
+
+        // Функция для голосовых сообщений
+        function addVoiceMessageToUI(message) {
+            const messagesContainer = document.getElementById('messages');
+
+            const messageElem = document.createElement('div');
+            messageElem.className = 'message voice';
+
+            // Заголовок с именем
+            const header = document.createElement('div');
+            header.innerHTML = `
+    <span class="user-name">${message.user_name}</span>
+    <span class="time">${new Date(message.created_at).toLocaleTimeString()}</span>
+  `;
+
+            // Аудио элемент
+            const audio = document.createElement('audio');
+            audio.controls = true;
+            audio.innerHTML = `
+    <source src="http://localhost:3000${message.file_url}" type="audio/webm">
+    Ваш браузер не поддерживает аудио.
+  `;
+
+            messageElem.appendChild(header);
+            messageElem.appendChild(audio);
+            messagesContainer.appendChild(messageElem);
+
+            // Автопрокрутка
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        function addMessageToUI(message) {
+            const messagesContainer = document.getElementById('messages');
+
+            // Удаляем текстовую метку для голосовых
+            if (message.is_voice_message) {
+                message.text = "";
+            }
+
+            const messageElem = document.createElement('div');
+            messageElem.classList.add('message');
+
+            // Блок автора
+            const author = document.createElement('div');
+            author.style.color = "#666";
+            author.textContent = `${message.user_name}:`;
+            messageElem.appendChild(author);
+
+            // Обработка голосовых
+            if (message.is_voice_message && message.file_url) {
+                const audioWrapper = document.createElement('div');
+                audioWrapper.style.marginTop = "5px";
+
+                const audio = document.createElement('audio');
+                audio.controls = true;
+                audio.style.width = "250px";
+
+                const source = document.createElement('source');
+                source.src = `http://localhost:3000${message.file_url}`;
+                source.type = 'audio/webm';
+
+                audio.appendChild(source);
+                audioWrapper.appendChild(audio);
+                messageElem.appendChild(audioWrapper);
+            }
+            // Обработка текстовых
+            else if (message.text) {
+                const textElem = document.createElement('div');
+                textElem.textContent = message.text;
+                messageElem.appendChild(textElem);
+            }
+
+            messagesContainer.appendChild(messageElem);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        function initChat(token) {
+            document.getElementById('auth').style.display = 'none';
+            document.getElementById('chat').style.display = 'block';
+
+            socket = io('http://localhost:3000', {
+                extraHeaders: {
+                    Authorization: `Bearer ${token}`
+                }
+            });
+
+
+            //логирование
+            socket.on('connect', () => {
+                console.log('Socket connected:', socket.id);
+            });
+
+            // socket.on('newMessage', (msg) => {
+            //     console.log('New message received:', msg);
+            //     addMessageToUI(msg);
+            // });
+
+            socket.on('newMessage', (message) => {
+                addMessageToUI({
+                    userId: message.sender_id,
+                    userName: message.user_name,
+                    text: message.text,
+                    isVoiceMessage: message.is_voice_message,
+                    fileUrl: message.file_url
+                });
+            });
+
+            // Унифицированная функция добавления сообщений
+
+            loadRooms();
+        }
+
+        async function createRoom() {
+            await fetch('http://localhost:3000/api/rooms', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${localStorage.getItem('token')}`
+                },
+                body: JSON.stringify({ name: prompt('Room name:') })
+            });
+            loadRooms();
+        }
+
+        document.getElementById('logoutBtn').onclick = function () {
+            localStorage.removeItem('token');
+            location.reload(); // Перезагружает страницу, возвращая на форму логина
+        };
+
+        async function joinRoom(roomId, roomName) {
+            currentRoom = roomId;
+            document.getElementById('currentRoom').textContent = "Текущая комната: " + roomName;
+            document.getElementById('messages').innerHTML = ""; // Очищаем сообщения
+            socket.emit('joinRoom', roomId);
+
+            try {
+                const response = await fetch(`http://localhost:3000/api/chat/rooms/${roomId}/messages`, {
+                    headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const messages = await response.json();
+                console.log('Получены сообщения:', messages);
+                messages.forEach(addMessageToUI);
+            } catch (error) {
+                console.error('Ошибка загрузки сообщений:', error);
+            }
+        }
+
+        async function loadRooms() {
+            document.getElementById('roomList').innerHTML = "";
+            const response = await fetch('http://localhost:3000/api/rooms', {
+                headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+            });
+            const rooms = await response.json();
+            rooms.forEach(room => {
+                const btn = document.createElement('button');
+                btn.textContent = room.name;
+                btn.onclick = () => joinRoom(room.id, room.name);
+                document.getElementById('roomList').appendChild(btn);
+            });
+        }
+
+        function sendMessage() {
+            if (!currentRoom) {
+                alert('Пожалуйста, выберите комнату для отправки сообщения');
+                return;
+            }
+
+            const message = document.getElementById('messageInput').value.trim();
+            if (!message) return;
+
+            socket.emit('sendMessage', {
+                text: message,
+                roomId: currentRoom
+            });
+
+            document.getElementById('messageInput').value = '';
+        }
+
+        // Голосовые сообщения
+        async function startRecording() {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream, {
+                mimeType: 'audio/webm; codecs=opus' // Явное указание кодеков
+            });
+            mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+            mediaRecorder.start();
+        }
+
+        async function stopRecording() {
+            mediaRecorder.stop();
+            mediaRecorder.onstop = async () => {
+                try {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    const formData = new FormData();
+                    formData.append('voice', audioBlob, 'recording.webm');
+                    formData.append('roomId', currentRoom);
+
+                    const response = await fetch('http://localhost:3000/api/chat/voice', {
+                        method: 'POST',
+                        headers: {
+                            Authorization: `Bearer ${localStorage.getItem('token')}`
+                        },
+                        body: formData
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
+                } catch (error) {
+                    console.error('Ошибка отправки:', error);
+                    alert('Ошибка отправки голосового сообщения');
+                } finally {
+                    audioChunks = [];
+                }
+            };
+        }
+
+
+
+        // Инициализация при загрузке
+        if (localStorage.getItem('token')) {
+            initChat(localStorage.getItem('token'));
+        }
+    </script>
+</body>
+
+</html>
+
+
+
+
+
+
+<!-- socket.on('newMessage', (message) => {
+                if (message.is_voice_message) {
+                    // 1. Исправляем формирование URL
+                    //const audioUrl = `http://localhost:3000/uploads${message.file_url}`;
+                    const audioUrl = `http://localhost:3000${message.file_url}`;
+
+                    // 2. Добавляем тег source с явным указанием MIME-типа
+                    const audio = document.createElement('audio');
+                    audio.controls = true;
+
+                    const source = document.createElement('source');
+                    source.src = audioUrl;
+                    source.type = 'audio/webm'; // или 'audio/wav' в зависимости от формата
+
+                    // 3. Добавьте обработчики ошибок
+                    audio.onerror = function () {
+                        console.error('Ошибка загрузки:', {
+                            src: audioUrl,
+                            error: this.error
+                        });
+                    };
+
+                    audio.appendChild(source);
+
+                    // 3. Добавляем обработку ошибок
+                    audio.onerror = function () {
+                        console.error('Ошибка загрузки аудио:', this.error);
+                    };
+
+                    const messageDiv = document.createElement('div');
+                    messageDiv.appendChild(audio);
+                    document.getElementById('messages').appendChild(messageDiv);
+                }
+            }); -->
+
+
+
+
+
+<!-- function addMessageToUI(message) {
+            const messagesContainer = document.getElementById('messages');
+            if (!messagesContainer) return;
+
+            const messageElem = document.createElement('div');
+            messageElem.classList.add('message');
+
+            if (message.text) {
+                // Текстовое сообщение
+                messageElem.textContent = `${message.userName || message.userId}: ${message.text}`;
+            } else if (message.audioUrl) {
+                // Голосовое сообщение
+                const audio = document.createElement('audio');
+                audio.controls = true;
+                audio.src = message.audioUrl;
+                messageElem.appendChild(document.createTextNode(`${message.userName || message.userId}: `));
+                messageElem.appendChild(audio);
+            } else {
+                messageElem.textContent = `${message.userName || message.userId}: [Новое сообщение]`;
+            }
+
+            messagesContainer.appendChild(messageElem);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        } -->
+
+
+<!-- 
+        function addMessage(message) {
+            const div = document.createElement('div');
+            div.className = 'message';
+
+            if (message.is_voice_message) {
+                div.innerHTML = `🎤 <audio controls src="http://localhost:3000/uploads${message.file_url}"></audio>`;
+            } else {
+                div.textContent = `${message.sender_id}: ${message.text}`;
+            }
+
+            document.getElementById('messages').appendChild(div);
+        } -->
