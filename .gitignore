@@ -1,5 +1,4 @@
 server/package-lock.json
+client/package-lock.json
 node_modules/
 uploads/
-client/node_modules/
-client/package-lock.json
