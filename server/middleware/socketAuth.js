@@ -2,7 +2,7 @@ const jwt = require('jsonwebtoken');
 
 const socketAuth = (socket, next) => {
   try {
-    const token = socket.handshake.headers.authorization?.replace('Bearer ', '');
+    const token = socket.handshake.auth.token;
     if (!token) {
       return next(new Error('Access denied: No token provided'));
     }

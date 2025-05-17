@@ -25,7 +25,7 @@ app.use(express.urlencoded({ extended: true }));
 // CORS Configuration
 const cors = require('cors');
 app.use(cors({
-  origin: '*', //http://localhost:8080
+  origin: 'http://localhost:3001', // Указать явно клиентский порт
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
@@ -55,12 +55,12 @@ const server = http.createServer(app);
 
 const io = require('socket.io')(server, {
   cors: {
-    origin: "http://localhost:3001", // Клиентский порт
+    origin: "http://localhost:3001", // Совпадает с клиентом
     methods: ["GET", "POST"],
-    allowedHeaders: ["Authorization"], // Разрешаем токен в заголовках
+    allowedHeaders: ["Authorization"],
     credentials: true
   },
-  transports: ['websocket', 'polling'] // Явное указание транспортов
+  transports: ['websocket', 'polling']
 });
 io.use(socketAuth);
 global._io = io;
@@ -98,10 +98,6 @@ io.on('connection', (socket) => {
     // Сохраняем и эмитим
     const savedMessage = await saveMessageToDB(data.roomId, data.userId, data.message);
     io.to(data.roomId).emit('newMessage', savedMessage);
-  });
-
-  socket.on('disconnect', () => {
-    console.log('User disconnected:', socket.id);
   });
 
   // Подписка на комнату для голосовой связи

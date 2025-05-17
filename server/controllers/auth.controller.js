@@ -9,7 +9,7 @@ exports.register = async (req, res) => {
     // Логирование входящего запроса
     console.log(`[REGISTER] Попытка регистрации: ${email}`);
 
-     // Проверка существующего пользователя
+    // Проверка существующего пользователя
     const existingUser = await User.findByEmail(email);
     if (existingUser) {
       console.warn(`[REGISTER] Email уже занят: ${email}`);
@@ -23,7 +23,7 @@ exports.register = async (req, res) => {
 
     //GOVNO
     const token = jwt.sign({ userId: user.id }, 'your_jwt_secret', { expiresIn: '10h' });
-    
+
     console.log(`[REGISTER] Успешно: ID ${user.id}`);
     console.log('[LOGIN] Generated token:', token);
 
@@ -42,5 +42,12 @@ exports.login = async (req, res) => {
     return res.status(401).json({ error: 'Invalid credentials' });
   }
   const token = jwt.sign({ userId: user.id }, 'your_jwt_secret', { expiresIn: '10h' }); // ВРЕМЯ СЕССИ МОЖНО ПОМЕНЯТЬ ЕС ЧО
-  res.json({ token });
+  res.json({
+    token,
+    user: { // Отправляем базовые данные пользователя
+      id: user.id,
+      name: user.name,
+      email: user.email
+    }
+  });
 };
