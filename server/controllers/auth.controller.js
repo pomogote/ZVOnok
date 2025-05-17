@@ -20,9 +20,14 @@ exports.register = async (req, res) => {
 
     // Создание пользователя
     const user = await User.createUser(name, email, hashedPassword);
-    console.log(`[REGISTER] Успешно: ID ${user.id}`);
-    res.status(201).json(user);
+
+    //GOVNO
+    const token = jwt.sign({ userId: user.id }, 'your_jwt_secret', { expiresIn: '10h' });
     
+    console.log(`[REGISTER] Успешно: ID ${user.id}`);
+    console.log('[LOGIN] Generated token:', token);
+
+    res.status(201).json(user);
   } catch (error) {
     // Логирование ошибки с деталями
     console.error('[REGISTER] Ошибка:', error.stack);

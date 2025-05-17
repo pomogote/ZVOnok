@@ -68,13 +68,17 @@ exports.sendVoiceMessage = async (req, res) => {
       `/uploads/voice/${voiceFile.filename}`
     );
 
-    // Отправляем полные данные через сокет
-    io.to(roomId).emit('newMessage', {
-      ...message,
-      user_name: user.name, // Добавляем имя
-      file_url: message.file_url, // Полный URL
-      is_voice_message: true // Явно указываем тип
-    });
+    // После сохранения голосового сообщения
+    const voiceMessage = {
+      ...message, // Данные из БД
+      user_name: user.name,
+      file_url: `/uploads/voice/${voiceFile.filename}`,
+      is_voice_message: true,
+      created_at: new Date().toISOString()
+    };
+
+    console.log('Отправка через сокет:', voiceMessage); // Логируем
+    io.to(roomId).emit('newMessage', voiceMessage);
 
     res.status(201).json(message);
   } catch (error) {

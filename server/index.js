@@ -55,14 +55,27 @@ const server = http.createServer(app);
 
 const io = require('socket.io')(server, {
   cors: {
-    origin: "http://localhost:8080",
+    origin: "http://localhost:3001", // Клиентский порт
     methods: ["GET", "POST"],
+    allowedHeaders: ["Authorization"], // Разрешаем токен в заголовках
     credentials: true
-  }
+  },
+  transports: ['websocket', 'polling'] // Явное указание транспортов
 });
 io.use(socketAuth);
 global._io = io;
 chatController.setIO(io);
+
+io.use((socket, next) => {
+  const token = socket.handshake.auth.token;
+  if (!token) return next(new Error('Authentication error'));
+
+  jwt.verify(token, 'your_jwt_secret', (err, decoded) => {
+    if (err) return next(new Error('Invalid token'));
+    socket.userId = decoded.userId;
+    next();
+  });
+});
 
 // Хранилище для отслеживания участников комнат
 const voiceRooms = new Map();
