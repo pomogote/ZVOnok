@@ -19,6 +19,10 @@ export default function ChatRoom({ token, userId, username, room, onLeave }) {
         socketRef.current.emit('joinRoom', room.id);
 
         socketRef.current.on('newMessage', (msg) => {
+            socketRef.current.on('newMessage', (msg) => {
+                console.log('[Клиент] Новое сообщение:', msg);
+                setMessages(prev => [...prev, msg]);
+            });
             setMessages(prev => [...prev, msg]);
         });
 
@@ -90,50 +94,48 @@ export default function ChatRoom({ token, userId, username, room, onLeave }) {
 }
 
 function VoiceRecorder({ roomId, token, onSend }) {
-
     const API_URL = process.env.REACT_APP_API_URL;
-
     const [recording, setRecording] = useState(false);
     const [mediaRecorder, setMediaRecorder] = useState(null);
-    const [audioChunks, setAudioChunks] = useState([]);
+    const audioChunksRef = useRef([]);
 
     const startRecording = async () => {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         const recorder = new window.MediaRecorder(stream);
         setMediaRecorder(recorder);
-        setAudioChunks([]);
+        audioChunksRef.current = [];
 
         recorder.ondataavailable = (e) => {
-            setAudioChunks((prev) => [...prev, e.data]);
+            if (e.data.size > 0) {
+                audioChunksRef.current.push(e.data);
+            }
         };
         recorder.onstop = async () => {
-            const blob = new Blob(audioChunks, { type: 'audio/webm' });
+            if (audioChunksRef.current.length === 0) {
+                alert("Не удалось записать аудио. Попробуйте ещё раз.");
+                return;
+            }
+            const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
             const formData = new FormData();
             formData.append('voice', blob, `recording.webm`);
             formData.append('roomId', roomId);
 
-            // Отправляем на сервер
             const res = await axios.post(
                 `${API_URL}/api/chat/voice`,
                 formData,
-                {
-                    headers: {
-                        Authorization: `Bearer ${token}`//,
-                        //'Content-Type': 'multipart/form-data'
-                    }
-                }
+                { headers: { Authorization: `Bearer ${token}` } }
             );
-            // onSend нужен чтобы сразу отобразить сообщение в чате, если сервер не пушит через сокет
             if (onSend) onSend(res.data);
         };
-
         recorder.start();
         setRecording(true);
     };
 
     const stopRecording = () => {
-        mediaRecorder.stop();
-        setRecording(false);
+        if (mediaRecorder) {
+            mediaRecorder.stop();
+            setRecording(false);
+        }
     };
 
     return (

@@ -51,14 +51,20 @@ exports.sendMessage = async (req, res) => {
 exports.sendVoiceMessage = async (req, res) => {
   try {
     const { roomId } = req.body;
-    console.log('Parsed roomId:', roomId);
-    if (!roomId) return res.status(400).json({ error: "Не указана комната" });
-    const voiceFile = req.file;
 
+    if (!roomId) {
+      return res.status(400).json({ error: "Не указана комната" });
+    }
+
+    const voiceFile = req.file;
     if (!voiceFile) {
       return res.status(400).json({ error: "Файл не загружен" });
     }
-    
+
+    if (!req.userId) {
+      return res.status(401).json({ error: "Токен недействителен" });
+    }
+
     const user = await User.findById(req.userId);
     if (!user) {
       return res.status(404).json({ error: "Пользователь не найден" });
@@ -68,55 +74,55 @@ exports.sendVoiceMessage = async (req, res) => {
     if (!room) {
       return res.status(404).json({ error: "Комната не найдена" });
     }
-    console.log('[sendVoiceMessage] Токен:', req.headers.authorization);
-    console.log('[sendVoiceMessage] req.userId:', req.userId);
-    console.log('[sendVoiceMessage] Найденный пользователь:', user);
 
-
-    if (!req.userId) {
-      return res.status(401).json({ error: "Токен недействителен" });
-    }
-    // Получение данных пользователя
-
-    console.log('Received roomId:', req.body.roomId);
-    console.log('File:', req.file);
-
+    // Формируем URL для доступа к файлу
     const fileUrl = `/uploads/voice/${voiceFile.filename}`;
 
-
-    const isVoiceMessage = true;
+    // Создаём запись сообщения в БД
     const message = await Message.create(
-      "", // Очищаем текстовое поле
+      "", // пустой текст для голосового сообщения
       req.userId,
       roomId,
-      true, // Явно указываем тип сообщения
-      `/uploads/voice/${voiceFile.filename}`
+      true, // is_voice_message = true
+      fileUrl
     );
 
-    // После сохранения голосового сообщения
+    // Формируем объект для отправки через сокет
     const voiceMessage = {
-      ...message, // Данные из БД
+      ...message,
       user_name: user.name,
-      file_url: `/uploads/voice/${voiceFile.filename}`,
+      user_id: user.id, // Добавляем ID отправителя
+      file_url: fileUrl,
       is_voice_message: true,
       created_at: new Date().toISOString()
     };
 
-    console.log('Отправка через сокет:', voiceMessage); // Логируем
-    io.to(roomId).emit('newMessage', voiceMessage);
+    // Логируем для отладки
+    console.log('[sendVoiceMessage] Отправка через сокет:', voiceMessage);
 
-    res.status(201).json(message);
-  } catch (error) {
-    console.error("Ошибка:", {
-      message: error.message,
-      stack: error.stack
+    console.log('[Сервер] Отправка голосового сообщения:', {
+      roomId,
+      fileUrl: voiceMessage.file_url,
+      user: voiceMessage.user_name
     });
+
+    // Отправляем новое сообщение всем участникам комнаты
+    if (io) {
+      io.to(roomId).emit('newMessage', voiceMessage);
+    }
+
+    // Отправляем ответ клиенту с данными сообщения
+    res.status(201).json(voiceMessage);
+
+  } catch (error) {
+    console.error("Ошибка в sendVoiceMessage:", error);
     res.status(500).json({
-      error: "Ошибка отправки",
+      error: "Ошибка отправки голосового сообщения",
       details: "Проверьте логи сервера"
     });
   }
 };
+
 
 exports.getMessages = async (req, res) => {
   try {
