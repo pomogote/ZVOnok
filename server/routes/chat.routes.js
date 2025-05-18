@@ -15,6 +15,7 @@ router.post('/voice',
     upload.single('voice'),
     (req, res, next) => {
         console.log("Файл:", req.file); // Добавьте лог файла
+        req.body.roomId = req.body.roomId;
         next();
     },
     chatController.sendVoiceMessage

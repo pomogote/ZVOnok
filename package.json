@@ -1,0 +1,12 @@
+{
+  "name": "my-app",
+  "version": "1.0.0",
+  "scripts": {
+    "start:client": "cd client && npm start",
+    "start:server": "node index.js",
+    "start": "concurrently \"npm run start:server\" \"npm run start:client\""
+  },
+  "devDependencies": {
+    "concurrently": "^8.0.1"
+  }
+}

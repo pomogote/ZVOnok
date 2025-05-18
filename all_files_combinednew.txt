@@ -47,601 +47,6 @@ PORT=3001
   }
 }
 
-
-===== client/public/index.html =====
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ZVOnok App</title>
-</head>
-<body>
-  <noscript>You need to enable JavaScript to run this app.</noscript>
-  <div id="root"></div>
-</body>
-</html>
-
-
-===== client/src/App.js =====
-// src/App.js
-import React, { useEffect, useState } from 'react';
-import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
-import { io } from 'socket.io-client';
-import axios from 'axios';
-import AuthPage from './pages/AuthPage';
-import ChatPage from './pages/ChatPage';
-import TasksPage from './pages/TasksPage';
-import RoomsPage from './pages/RoomsPage';
-import CallPage from './pages/CallPage';
-import Navbar from './components/Navbar';
-
-axios.defaults.baseURL = 'http://localhost:3000/api';
-
-function App() {
-  const [user, setUser] = useState(null);
-  const [socket, setSocket] = useState(null);
-
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      const newSocket = io('http://localhost:3000', {
-        auth: { token },
-        transports: ['websocket'] // Принудительно используем WebSocket
-      });
-      setSocket(newSocket);
-    }
-  }, []);
-
-  return (
-    <Router>
-      <Navbar user={user} setUser={setUser} />
-      <Routes>
-        <Route path="/" element={
-          user ? <Navigate to="/chat" /> : <Navigate to="/login" />
-        }/>
-        <Route path="/login" element={
-          <AuthPage type="login" setUser={setUser} />
-        }/>
-        <Route path="/register" element={
-          <AuthPage type="register" setUser={setUser} />
-        }/>
-        <Route path="/chat" element={
-          <ProtectedRoute user={user}><ChatPage socket={socket} /></ProtectedRoute>
-        }/>
-        <Route path="/tasks" element={
-          <ProtectedRoute user={user}><TasksPage /></ProtectedRoute>
-        }/>
-        <Route path="/rooms" element={
-          <ProtectedRoute user={user}><RoomsPage /></ProtectedRoute>
-        }/>
-        <Route path="/call/:roomId" element={
-          <ProtectedRoute user={user}><CallPage socket={socket} /></ProtectedRoute>
-        }/>
-      </Routes>
-    </Router>
-  );
-}
-
-const ProtectedRoute = ({ user, children }) => {
-  if (!user) return <Navigate to="/login" />;
-  return children;
-};
-
-export default App;
-
-
-===== client/src/components/Navbar.js =====
-import React from 'react';
-import { Link } from 'react-router-dom';
-
-export default function Navbar({ user, setUser }) {
-  return (
-    <nav>
-      <Link to="/">Home</Link>
-      {user ? (
-        <button onClick={() => setUser(null)}>Logout</button>
-      ) : (
-        <>
-          <Link to="/login">Login</Link>
-          <Link to="/register">Register</Link>
-        </>
-      )}
-    </nav>
-  );
-}
-
-
-===== client/src/components/VoiceRecorder.js =====
-// src/components/VoiceRecorder.js
-import React, { useState, useEffect } from 'react';
-
-export default function VoiceRecorder({ onRecordingComplete }) {
-  const [isRecording, setIsRecording] = useState(false);
-  const mediaRecorder = useRef(null);
-  const audioChunks = useRef([]);
-
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorder.current = new MediaRecorder(stream);
-      
-      mediaRecorder.current.ondataavailable = (e) => {
-        audioChunks.current.push(e.data);
-      };
-
-      mediaRecorder.current.onstop = () => {
-        const audioBlob = new Blob(audioChunks.current, { type: 'audio/webm' });
-        onRecordingComplete(audioBlob);
-        audioChunks.current = [];
-      };
-
-      mediaRecorder.current.start();
-      setIsRecording(true);
-    } catch (error) {
-      console.error('Ошибка доступа к микрофону:', error);
-    }
-  };
-
-  const stopRecording = () => {
-    mediaRecorder.current.stop();
-    setIsRecording(false);
-  };
-
-  return (
-    <button 
-      className={`voice-recorder ${isRecording ? 'recording' : ''}`}
-      onMouseDown={startRecording}
-      onMouseUp={stopRecording}
-      onTouchStart={startRecording}
-      onTouchEnd={stopRecording}
-    >
-      {isRecording ? '⏹' : '🎤'}
-    </button>
-  );
-}
-
-
-===== client/src/index.js =====
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import App from './App';
-
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
-
-
-===== client/src/pages/AuthPage.js =====
-// src/pages/AuthPage.js
-import React, { useState } from 'react';
-import axios from 'axios';
-import { useNavigate } from 'react-router-dom';
-
-export default function AuthPage({ type, setUser }) {
-  const [formData, setFormData] = useState({ name: '', email: '', password: '' });
-  const [error, setError] = useState('');
-  const navigate = useNavigate();
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      const { data } = await axios.post(`/auth/${type}`, {
-        email: formData.email,
-        password: formData.password
-      });
-
-      // Добавьте логирование ответа
-      console.log('Auth response:', data);
-
-      if (data.token && data.user) {
-        localStorage.setItem('token', data.token);
-        axios.defaults.headers.common['Authorization'] = `Bearer ${data.token}`;
-        setUser(data.user); // Обновление состояния пользователя
-        navigate('/chat'); // Перенаправление
-      } else {
-        setError('Неверные данные авторизации');
-      }
-    } catch (error) {
-      console.error('Ошибка:', error.response?.data || error.message);
-      setError(error.response?.data?.error || 'Ошибка сервера');
-    }
-  };
-
-  return (
-    <div className="auth-container">
-      <h2>{type === 'login' ? 'Вход' : 'Регистрация'}</h2>
-      <form onSubmit={handleSubmit}>
-        {type === 'register' && (
-          <input
-            type="text"
-            placeholder="Имя"
-            value={formData.name}
-            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-          />
-        )}
-        <input
-          type="email"
-          placeholder="Email"
-          value={formData.email}
-          onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-        />
-        <input
-          type="password"
-          placeholder="Пароль"
-          value={formData.password}
-          onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-        />
-        <button type="submit">{type === 'login' ? 'Войти' : 'Зарегистрироваться'}</button>
-        {error && <div className="error">{error}</div>}
-      </form>
-    </div>
-  );
-}
-
-
-===== client/src/pages/CallPage.js =====
-// src/pages/CallPage.js
-import React, { useEffect, useRef, useState } from 'react';
-import Peer from 'simple-peer';
-import axios from 'axios';
-
-export default function CallPage({ socket, roomId }) {
-  const [peers, setPeers] = useState([]);
-  const userVideo = useRef();
-  const peersRef = useRef([]);
-  const [screenSharing, setScreenSharing] = useState(false);
-
-  useEffect(() => {
-    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-      .then(stream => {
-        userVideo.current.srcObject = stream;
-        
-        socket.emit('joinVoiceRoom', roomId);
-        
-        socket.on('new-peer', ({ peerId }) => {
-          const peer = createPeer(peerId, socket.id, stream);
-          peersRef.current.push({ peerId, peer });
-          setPeers(users => [...users, { peerId, stream: null }]);
-        });
-
-        socket.on('webrtc-signal', ({ senderId, signal }) => {
-          const peer = peersRef.current.find(p => p.peerId === senderId)?.peer;
-          peer.signal(signal);
-        });
-
-        socket.on('peer-disconnected', ({ peerId }) => {
-          const peerObj = peersRef.current.find(p => p.peerId === peerId);
-          if (peerObj) {
-            peerObj.peer.destroy();
-            peersRef.current = peersRef.current.filter(p => p.peerId !== peerId);
-            setPeers(users => users.filter(u => u.peerId !== peerId));
-          }
-        });
-      });
-
-    return () => {
-      socket.off('new-peer');
-      socket.off('webrtc-signal');
-      socket.off('peer-disconnected');
-    };
-  }, []);
-
-  const createPeer = (remoteId, localId, stream) => {
-    const peer = new Peer({ initiator: true, trickle: false, stream });
-    
-    peer.on('signal', signal => {
-      socket.emit('webrtc-signal', { 
-        targetPeerId: remoteId, 
-        signal,
-        roomId 
-      });
-    });
-
-    peer.on('stream', remoteStream => {
-      setPeers(users => users.map(u => 
-        u.peerId === remoteId ? { ...u, stream: remoteStream } : u
-      ));
-    });
-
-    return peer;
-  };
-
-  const toggleScreenShare = async () => {
-    if (screenSharing) {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      userVideo.current.srcObject = stream;
-    } else {
-      const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-      userVideo.current.srcObject = screenStream;
-      peersRef.current.forEach(({ peer }) => {
-        peer.replaceTrack(
-          peer.streams[0].getVideoTracks()[0],
-          screenStream.getVideoTracks()[0],
-          userVideo.current.srcObject
-        );
-      });
-    }
-    setScreenSharing(!screenSharing);
-  };
-
-  return (
-    <div className="call-container">
-      <div className="video-grid">
-        <video 
-          ref={userVideo} 
-          autoPlay 
-          muted 
-          className="local-video"
-        />
-        
-        {peers.map(peer => (
-          <video
-            key={peer.peerId}
-            ref={ref => ref && (ref.srcObject = peer.stream)}
-            autoPlay
-            className="remote-video"
-          />
-        ))}
-      </div>
-
-      <div className="call-controls">
-        <button onClick={toggleScreenShare}>
-          {screenSharing ? 'Stop Sharing' : 'Share Screen'}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-
-===== client/src/pages/ChatPage.js =====
-// src/pages/ChatPage.js
-import React, { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
-import VoiceRecorder from '../components/VoiceRecorder';
-
-export default function ChatPage({ socket }) {
-  const [messages, setMessages] = useState([]);
-  const [inputMessage, setInputMessage] = useState('');
-  const [currentRoom, setCurrentRoom] = useState(null);
-  const messagesEndRef = useRef(null);
-
-  useEffect(() => {
-    if (!socket || !currentRoom) return;
-
-    socket.on('newMessage', (message) => {
-      setMessages(prev => [...prev, message]);
-    });
-
-    return () => socket.off('newMessage');
-  }, [socket, currentRoom]);
-
-  const sendMessage = async () => {
-    if (!inputMessage.trim()) return;
-    
-    await axios.post('/chat/messages', {
-      text: inputMessage,
-      roomId: currentRoom
-    });
-    setInputMessage('');
-  };
-
-  const sendVoiceMessage = async (audioBlob) => {
-    const formData = new FormData();
-    formData.append('voice', audioBlob, 'voice.mp3');
-    formData.append('roomId', currentRoom);
-
-    await axios.post('/chat/voice', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    });
-  };
-
-  return (
-    <div className="chat-container">
-      <div className="messages-list">
-        {messages.map(msg => (
-          <div key={msg.id} className={`message ${msg.sender_id === user.id ? 'own' : ''}`}>
-            {msg.is_voice_message ? (
-              <audio controls src={msg.file_url} />
-            ) : (
-              <p>{msg.text}</p>
-            )}
-          </div>
-        ))}
-        <div ref={messagesEndRef} />
-      </div>
-      
-      <div className="message-input">
-        <input
-          value={inputMessage}
-          onChange={(e) => setInputMessage(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-        />
-        <VoiceRecorder onRecordingComplete={sendVoiceMessage} />
-        <button onClick={sendMessage}>Отправить</button>
-      </div>
-    </div>
-  );
-}
-
-
-===== client/src/pages/RoomsPage.js =====
-// src/pages/RoomsPage.js
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import { Link, useNavigate } from 'react-router-dom';
-
-export default function RoomsPage() {
-  const [rooms, setRooms] = useState([]);
-  const [newRoomName, setNewRoomName] = useState('');
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    const fetchRooms = async () => {
-      try {
-        const { data } = await axios.get('/rooms');
-        setRooms(data);
-      } catch (error) {
-        console.error('Ошибка загрузки комнат:', error);
-      }
-    };
-    fetchRooms();
-  }, []);
-
-  const createRoom = async (e) => {
-    e.preventDefault();
-    if (!newRoomName.trim()) return;
-    
-    try {
-      const { data } = await axios.post('/rooms', { name: newRoomName });
-      setRooms([...rooms, data]);
-      setNewRoomName('');
-      navigate(`/chat/${data.id}`);
-    } catch (error) {
-      console.error('Ошибка создания комнаты:', error);
-    }
-  };
-
-  return (
-    <div className="rooms-container">
-      <h2>Комнаты</h2>
-      <form onSubmit={createRoom} className="room-form">
-        <input
-          type="text"
-          placeholder="Название комнаты"
-          value={newRoomName}
-          onChange={(e) => setNewRoomName(e.target.value)}
-        />
-        <button type="submit">Создать</button>
-      </form>
-
-      <div className="rooms-list">
-        {rooms.map(room => (
-          <Link key={room.id} to={`/chat/${room.id}`} className="room-item">
-            {room.name}
-          </Link>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-
-===== client/src/pages/TasksPage.js =====
-import React from 'react';
-
-export default function TasksPage() {
-  return <h2>Tasks Page (under construction)</h2>;
-}
-
-
-===== client/src/styles/main.scss =====
-// src/styles/main.scss
-$primary: #2c3e50;
-$secondary: #3498db;
-
-.chat-container {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  max-width: 800px;
-  margin: 0 auto;
-
-  .messages-list {
-    flex: 1;
-    overflow-y: auto;
-    padding: 1rem;
-
-    .message {
-      margin: 0.5rem 0;
-      padding: 0.8rem;
-      border-radius: 1rem;
-      background: #f0f0f0;
-      max-width: 70%;
-
-      &.own {
-        margin-left: auto;
-        background: $secondary;
-        color: white;
-      }
-    }
-  }
-
-  .message-input {
-    display: flex;
-    padding: 1rem;
-    gap: 0.5rem;
-
-    input {
-      flex: 1;
-      padding: 0.5rem;
-      border: 1px solid #ddd;
-      border-radius: 0.5rem;
-    }
-
-    button {
-      padding: 0.5rem 1rem;
-      background: $primary;
-      color: white;
-      border: none;
-      border-radius: 0.5rem;
-      cursor: pointer;
-    }
-  }
-}
-
-.call-container {
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-
-  .video-grid {
-    flex: 1;
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 1rem;
-    padding: 1rem;
-
-    video {
-      width: 100%;
-      height: auto;
-      border-radius: 0.5rem;
-      background: #000;
-
-      &.local-video {
-        position: fixed;
-        bottom: 1rem;
-        right: 1rem;
-        width: 200px;
-        box-shadow: 0 0 10px rgba(0,0,0,0.3);
-      }
-    }
-  }
-
-  .call-controls {
-    padding: 1rem;
-    background: #f8f9fa;
-    text-align: center;
-
-    button {
-      margin: 0 0.5rem;
-      padding: 0.8rem 1.5rem;
-      background: $primary;
-      color: white;
-      border: none;
-      border-radius: 0.5rem;
-      cursor: pointer;
-    }
-  }
-}
-
-
 ===== server/config/db.js =====
 const { Pool } = require('pg');
 
@@ -3114,3 +2519,1003 @@ CREATE TABLE tasks (
 -- Индексы для ускорения поиска
 CREATE INDEX idx_messages_room ON messages(room_id);
 CREATE INDEX idx_tasks_assignee ON tasks(assignee_id);
+===== .gitignore =====
+server/package-lock.json
+client/package-lock.json
+node_modules/
+uploads/
+
+
+===== all_files_combinednew.txt =====
+
+
+===== client/.env =====
+PORT=3001
+
+
+===== client/package.json =====
+{
+  "name": "client",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject"
+  },
+  "dependencies": {
+    "axios": "^1.6.2",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-icons": "^5.5.0",
+    "react-router-dom": "^7.6.0",
+    "react-scripts": "5.0.1",
+    "sass": "^1.89.0",
+    "simple-peer": "^9.11.1",
+    "socket.io-client": "^4.7.1"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}
+
+
+===== server/config/db.js =====
+const { Pool } = require('pg');
+
+const pool = new Pool({
+  user: 'postgres',
+  host: 'localhost',
+  database: 'zvonokDB',
+  password: '123',
+  port: 5432, //??
+});
+
+module.exports = pool;
+
+
+===== server/controllers/auth.controller.js =====
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const User = require('../models/user.model');
+
+exports.register = async (req, res) => {
+  try {
+    const { name, email, password } = req.body;
+
+    // Логирование входящего запроса
+    console.log(`[REGISTER] Попытка регистрации: ${email}`);
+
+    // Проверка существующего пользователя
+    const existingUser = await User.findByEmail(email);
+    if (existingUser) {
+      console.warn(`[REGISTER] Email уже занят: ${email}`);
+      return res.status(400).json({ error: "Email уже занят" });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Создание пользователя
+    const user = await User.createUser(name, email, hashedPassword);
+
+    //GOVNO
+    const token = jwt.sign({ userId: user.id }, 'your_jwt_secret', { expiresIn: '10h' });
+
+    console.log(`[REGISTER] Успешно: ID ${user.id}`);
+    console.log('[LOGIN] Generated token:', token);
+
+    res.status(201).json(user);
+  } catch (error) {
+    // Логирование ошибки с деталями
+    console.error('[REGISTER] Ошибка:', error.stack);
+    res.status(500).json({ error: "Registration failed" });
+  }
+};
+
+exports.login = async (req, res) => {
+  const { email, password } = req.body;
+  const user = await User.findByEmail(email);
+  if (!user || !(await bcrypt.compare(password, user.password_hash))) {
+    return res.status(401).json({ error: 'Invalid credentials' });
+  }
+  const token = jwt.sign({ userId: user.id }, 'your_jwt_secret', { expiresIn: '10h' }); // ВРЕМЯ СЕССИ МОЖНО ПОМЕНЯТЬ ЕС ЧО
+  res.json({
+    token,
+    user: { // Отправляем базовые данные пользователя
+      id: user.id,
+      name: user.name,
+      email: user.email
+    }
+  });
+};
+
+
+===== server/controllers/chat.controller.js =====
+const Message = require('../models/message.model');
+const Room = require("../models/room.model");
+const User = require("../models/user.model");
+const upload = require("../middleware/upload");
+const path = require('path');
+const fs = require('fs');
+let io;
+
+exports.setIO = (ioInstance) => {
+  io = ioInstance;
+};
+
+
+// Заглушка для uploadToCloud - возвращает путь к локальному файлу
+async function uploadToCloud(file) {
+  // В реальном приложении здесь будет загрузка в облако
+  // Пока просто возвращаем относительный путь для доступа
+  return file.path;
+}
+
+
+exports.sendMessage = async (req, res) => {
+  try {
+    const { text, roomId, isVoiceMessage, fileUrl } = req.body;
+
+    //проверка существования комнаты
+    const room = await Room.findById(roomId);
+    if (!room) {
+      return res.status(404).json({ error: "Комната не найдена" });
+    }
+
+    const message = await Message.create(text, req.userId, roomId, isVoiceMessage, fileUrl);
+    res.status(201).json(message);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to send message' });
+  }
+};
+
+exports.sendVoiceMessage = async (req, res) => {
+  try {
+    const { roomId } = req.body;
+    const voiceFile = req.file;
+
+    if (!voiceFile) {
+      return res.status(400).json({ error: "Файл не загружен" });
+    }
+
+    const room = await Room.findById(roomId);
+    if (!room) {
+      return res.status(404).json({ error: "Комната не найдена" });
+    }
+
+    // Получение данных пользователя
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(404).json({ error: "Пользователь не найден" });
+    }
+
+    const fileUrl = `/uploads/voice/${voiceFile.filename}`;
+
+
+    const isVoiceMessage = true;
+    const message = await Message.create(
+      "", // Очищаем текстовое поле
+      req.userId,
+      roomId,
+      true, // Явно указываем тип сообщения
+      `/uploads/voice/${voiceFile.filename}`
+    );
+
+    // После сохранения голосового сообщения
+    const voiceMessage = {
+      ...message, // Данные из БД
+      user_name: user.name,
+      file_url: `/uploads/voice/${voiceFile.filename}`,
+      is_voice_message: true,
+      created_at: new Date().toISOString()
+    };
+
+    console.log('Отправка через сокет:', voiceMessage); // Логируем
+    io.to(roomId).emit('newMessage', voiceMessage);
+
+    res.status(201).json(message);
+  } catch (error) {
+    console.error("Ошибка:", {
+      message: error.message,
+      stack: error.stack
+    });
+    res.status(500).json({
+      error: "Ошибка отправки",
+      details: "Проверьте логи сервера"
+    });
+  }
+};
+
+exports.getMessages = async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const messages = await Message.findByRoom(roomId);
+
+    // Если сообщения пустые, проверим существование комнаты
+    if (messages.length === 0) {
+      const roomExists = await Room.findById(roomId);
+      if (!roomExists) {
+        return res.status(404).json({ error: "Комната не найдена" });
+      }
+    }
+
+    // Добавляем информацию об авторе
+    const messagesWithAuthors = await Promise.all(
+      messages.map(async msg => {
+        const user = await User.findById(msg.sender_id);
+        return {
+          ...msg,
+          user_name: user?.name || 'Неизвестный'
+        };
+      })
+    );
+
+    res.json(messages);
+  } catch (error) {
+    console.error('[ERROR] Ошибка получения сообщений:', error);
+    res.status(500).json({ error: 'Ошибка получения сообщений' });
+  }
+};
+
+
+===== server/controllers/room.controller.js =====
+const Room = require("../models/room.model");
+
+exports.getAllRooms = async (req, res) => {
+  try {
+    const rooms = await Room.getAll();
+    res.json(rooms);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch rooms" });
+  }
+};
+
+exports.createRoom = async (req, res) => {
+  try {
+    const { name } = req.body;
+    const room = await Room.create(name);
+    res.status(201).json(room);
+  } catch (error) {
+    res.status(500).json({ error: "Ошибка создания комнаты" });
+  }
+};
+
+exports.getRoom = async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const room = await Room.findById(roomId);
+    if (!room) {
+      return res.status(404).json({ error: "Комната не найдена" });
+    }
+    res.json(room);
+  } catch (error) {
+    res.status(500).json({ error: "Ошибка получения комнаты" });
+  }
+};
+
+
+===== server/controllers/task.controller.js =====
+const Task = require('../models/task.model');
+
+exports.createTask = async (req, res) => {
+  try {
+    const { title, description, deadline } = req.body;
+    const task = await Task.create(title, description, req.userId, deadline);
+    res.status(201).json(task);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to create task' });
+  }
+};
+
+exports.getTasks = async (req, res) => {
+  try {
+    const tasks = await Task.findAllByUser(req.userId);
+    res.json(tasks);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch tasks' });
+  }
+};
+
+exports.updateTask = async (req, res) => {
+  try {
+    const { taskId } = req.params;
+    const { status } = req.body;
+    const task = await Task.updateStatus(taskId, status);
+    res.json(task);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update task' });
+  }
+};
+
+
+===== server/index.js =====
+const express = require('express');
+const http = require('http');
+const fs = require('fs');
+const pool = require('./config/db');
+const socketAuth = require('./middleware/socketAuth');
+const Message = require('./models/message.model');
+const path = require('path');
+const chatController = require('./controllers/chat.controller');
+
+pool.query('SELECT NOW()', (err) => {
+  if (err) {
+    console.error('PostgreSQL connection error:', err);
+  } else {
+    console.log('PostgreSQL connected successfully');
+  }
+});
+
+const authRoutes = require('./routes/auth.routes');
+const app = express();
+
+// Middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// CORS Configuration
+const cors = require('cors');
+app.use(cors({
+  origin: 'http://localhost:3001', // Указать явно клиентский порт
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+}));
+
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Routes
+app.use('/api/auth', require('./routes/auth.routes'));
+app.use('/api/tasks', require('./routes/task.routes'));
+app.use('/api/chat', require('./routes/chat.routes'));
+app.use('/api/rooms', require('./routes/room.routes'));
+app.use('/api/calls', require('./routes/call.routes'));
+
+// Profile endpoint
+app.get('/api/profile', require('./middleware/auth'), (req, res) => {
+  res.json({ userId: req.userId });
+});
+
+//Перехват необработанных исключений
+process.on('uncaughtException', (error) => {
+  console.error(`[CRASH] Необработанная ошибка: ${error.message}`);
+  process.exit(1);
+});
+
+const server = http.createServer(app);
+
+const io = require('socket.io')(server, {
+  cors: {
+    origin: "http://localhost:3001", // Совпадает с клиентом
+    methods: ["GET", "POST"],
+    allowedHeaders: ["Authorization"],
+    credentials: true
+  },
+  transports: ['websocket', 'polling']
+});
+io.use(socketAuth);
+global._io = io;
+chatController.setIO(io);
+
+io.use((socket, next) => {
+  const token = socket.handshake.auth.token;
+  if (!token) return next(new Error('Authentication error'));
+
+  jwt.verify(token, 'your_jwt_secret', (err, decoded) => {
+    if (err) return next(new Error('Invalid token'));
+    socket.userId = decoded.userId;
+    next();
+  });
+});
+
+// Хранилище для отслеживания участников комнат
+const voiceRooms = new Map();
+
+// Хранилище для отслеживания активных подключений
+const activeConnections = new Map(); // roomId → Set<peerId>
+const peerConfigs = new Map(); // peerId → { type: 'call' | 'conference', roomId }
+
+io.on('connection', (socket) => {
+  console.log('User connected:', socket.id);
+
+  // Подписка на комнату чата
+  socket.on('joinRoom', (roomId) => {
+    socket.join(roomId);
+    console.log(`User joined chat room: ${roomId}`);
+  });
+
+  socket.on('chatMessage', async (data) => {
+    console.log('Received chatMessage:', data);
+    // Сохраняем и эмитим
+    const savedMessage = await saveMessageToDB(data.roomId, data.userId, data.message);
+    io.to(data.roomId).emit('newMessage', savedMessage);
+  });
+
+  // Подписка на комнату для голосовой связи
+  socket.on('joinVoiceRoom', (roomId) => {
+    socket.join(roomId);
+
+    // Инициализируем комнату если ее нет
+    if (!voiceRooms.has(roomId)) {
+      voiceRooms.set(roomId, new Set());
+    }
+
+    voiceRooms.get(roomId).add(socket.id);
+    console.log(`User joined voice room: ${roomId}`);
+
+    // Уведомляем других участников о новом пользователе
+    socket.to(roomId).emit('new-peer', { peerId: socket.id });
+  });
+
+  // Обработка WebRTC сигналов
+  socket.on('webrtc-signal', (data) => {
+    // Пересылаем сигнал конкретному получателю
+    io.to(data.targetPeerId).emit('webrtc-signal', {
+      senderId: socket.id,
+      signal: data.signal,
+      roomId: data.roomId
+    });
+  });
+
+  // Обработка отключения
+  socket.on('disconnect', () => {
+    console.log('User disconnected:', socket.id);
+
+    // Удаляем пользователя из всех голосовых комнат
+    voiceRooms.forEach((participants, roomId) => {
+      if (participants.has(socket.id)) {
+        participants.delete(socket.id);
+        socket.to(roomId).emit('peer-disconnected', { peerId: socket.id });
+      }
+    });
+  });
+
+  // Отправка сообщения в комнату
+  socket.on('sendMessage', async (data) => {
+    try {
+      const { text, roomId } = data;
+      const message = await Message.create(text, socket.userId, roomId);
+      io.to(roomId).emit('newMessage', message);
+    } catch (error) {
+      console.error('Error sending message:', error);
+    }
+  });
+
+  socket.on('disconnect', () => {
+    console.log('User disconnected:', socket.id);
+  });
+
+  // Инициализация звонка 1:1
+  socket.on('initiate-call', ({ targetUserId, roomId }) => {
+    socket.join(roomId);
+    activeConnections.set(roomId, new Set([socket.id]));
+    peerConfigs.set(socket.id, { type: 'call', roomId });
+    socket.to(roomId).emit('incoming-call', { callerId: socket.id });
+  });
+
+  // Принятие входящего звонка
+  socket.on('accept-call', ({ roomId }) => {
+    socket.join(roomId);
+    const peers = activeConnections.get(roomId);
+    peers.add(socket.id);
+    io.to(roomId).emit('call-accepted', { participants: Array.from(peers) });
+  });
+
+  // Создание конференции
+  socket.on('create-conference', (roomId) => {
+    socket.join(roomId);
+    activeConnections.set(roomId, new Set([socket.id]));
+    peerConfigs.set(socket.id, { type: 'conference', roomId });
+  });
+
+  // Присоединение к конференции
+  socket.on('join-conference', (roomId) => {
+    socket.join(roomId);
+    const peers = activeConnections.get(roomId);
+    peers.add(socket.id);
+    io.to(roomId).emit('new-participant', { peerId: socket.id });
+  });
+
+  // Обработка WebRTC-сигналов
+  socket.on('webrtc-signal', ({ signal, targetPeerId, roomId }) => {
+    socket.to(targetPeerId).emit('webrtc-signal', {
+      senderId: socket.id,
+      signal,
+      roomId
+    });
+  });
+
+  // Демонстрация экрана
+  socket.on('screen-share', ({ roomId, streamId }) => {
+    const peers = activeConnections.get(roomId);
+    peers.forEach(peerId => {
+      if (peerId !== socket.id) {
+        io.to(peerId).emit('screen-share-started', { streamId });
+      }
+    });
+  });
+
+  // Отключение
+  socket.on('disconnect', () => {
+    const config = peerConfigs.get(socket.id);
+    if (config) {
+      const roomId = config.roomId;
+      const peers = activeConnections.get(roomId);
+      peers.delete(socket.id);
+
+      if (peers.size === 0) {
+        activeConnections.delete(roomId);
+      } else {
+        io.to(roomId).emit('participant-left', { peerId: socket.id });
+      }
+
+      peerConfigs.delete(socket.id);
+    }
+    console.log('User disconnected:', socket.id);
+  });
+
+});
+
+const PORT = 3000;
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
+
+const uploadsDir = path.join(__dirname, 'uploads');
+fs.mkdirSync(uploadsDir, { recursive: true });
+
+
+
+
+===== server/middleware/auth.js =====
+const jwt = require('jsonwebtoken');
+const User = require('../models/user.model');
+
+module.exports = (req, res, next) => {
+  const token = req.header('Authorization')?.replace('Bearer ', '');
+
+  if (!token) return res.status(401).json({ error: 'Access denied' });
+
+  try {
+    const decoded = jwt.verify(token, 'your_jwt_secret');
+    const user = User.findById(decoded.userId);
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    req.user = user;
+    next();
+    
+  } catch (error) {
+    res.status(400).json({ error: 'Invalid token' });
+  }
+};
+
+
+===== server/middleware/logger.js =====
+module.exports = (req, res, next) => {
+  const start = Date.now();
+
+  // Логирование входящего запроса
+  console.log(`[REQUEST] ${req.method} ${req.url}`);
+
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    console.log(`[RESPONSE] ${req.method} ${req.url} - Status: ${res.statusCode} (${duration}ms)`);
+  });
+
+  next();
+};
+
+
+===== server/middleware/socketAuth.js =====
+const jwt = require('jsonwebtoken');
+
+const socketAuth = (socket, next) => {
+  try {
+    const token = socket.handshake.auth.token;
+    if (!token) {
+      return next(new Error('Access denied: No token provided'));
+    }
+
+    const decoded = jwt.verify(token, 'your_jwt_secret');
+    socket.userId = decoded.userId; // сохраняем userId для дальнейшего использования
+    next();
+  } catch (error) {
+    next(new Error('Invalid token'));
+  }
+};
+
+module.exports = socketAuth;
+
+
+===== server/middleware/upload.js =====
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
+
+// Автоматическое создание папки
+const voiceDir = path.join(__dirname, "../uploads/voice");
+fs.mkdirSync(voiceDir, { recursive: true });
+
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, voiceDir); // Используем абсолютный путь
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const cleanName = file.originalname.replace(/[^a-zA-Z0-9\.]/g, '_');
+    cb(null, uniqueSuffix + '-' + cleanName);
+  }
+});
+
+const upload = multer({
+  storage: storage,
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('audio/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Только аудиофайлы разрешены'));
+    }
+  }
+});
+
+module.exports = upload;
+
+
+===== server/models/message.model.js =====
+const pool = require('../config/db');
+
+class Message {
+  static async create(text, senderId, roomId, isVoiceMessage = false, fileUrl = null) {
+
+    if (isVoiceMessage) text = "";
+    const { rows } = await pool.query(
+      `INSERT INTO messages (text, sender_id, room_id, is_voice_message, file_url)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [text, senderId, roomId, isVoiceMessage, fileUrl]
+    );
+    console.log('[DB] Сообщение сохранено:', rows[0]); // Логирование
+    return rows[0];
+  } catch(error) {
+    console.error('[DB] Ошибка сохранения:', error);
+    throw error;
+  }
+
+  static async findByRoom(roomId) {
+    const { rows } = await pool.query(
+      `SELECT 
+      m.id,
+      m.text,
+      m.sender_id,
+      m.room_id,
+      m.is_voice_message,
+      m.file_url,
+      m.created_at,
+      u.name as user_name
+    FROM messages m
+    LEFT JOIN users u ON m.sender_id = u.id
+    WHERE m.room_id = $1
+    ORDER BY m.created_at ASC`,
+      [roomId]
+    );
+    return rows;
+  }
+}
+
+module.exports = Message;
+
+
+===== server/models/room.model.js =====
+const pool = require("../config/db");
+
+class Room {
+  static async create(name, type = "chat") {
+    const { rows } = await pool.query(
+      "INSERT INTO rooms (name, type) VALUES ($1, $2) RETURNING *",
+      [name, type]
+    );
+    return rows[0];
+  }
+
+  static async getAll() {
+  const { rows } = await pool.query("SELECT * FROM rooms ORDER BY id ASC");
+  return rows;
+}
+
+  static async findById(roomId) {
+    const { rows } = await pool.query("SELECT * FROM rooms WHERE id = $1", [roomId]);
+    return rows[0];
+  }
+}
+
+module.exports = Room;
+
+
+===== server/models/task.model.js =====
+const pool = require('../config/db');
+class Task {
+  static async create(title, description, assigneeId, deadline) {
+    const { rows } = await pool.query(
+      `INSERT INTO tasks (title, description, status, assignee_id, deadline)
+       VALUES ($1, $2, 'todo', $3, $4) RETURNING *`,
+      [title, description, assigneeId, deadline]
+    );
+    return rows[0];
+  }
+
+  static async findAllByUser(userId) {
+    const { rows } = await pool.query(
+      `SELECT * FROM tasks WHERE assignee_id = $1`,
+      [userId]
+    );
+    return rows;
+  }
+
+  static async updateStatus(taskId, newStatus) {
+    const { rows } = await pool.query(
+      `UPDATE tasks SET status = $1 WHERE id = $2 RETURNING *`,
+      [newStatus, taskId]
+    );
+    return rows[0];
+  }
+}
+
+module.exports = Task;
+
+
+===== server/models/user.model.js =====
+const pool = require('../config/db');
+class User {
+  static async findByEmail(email) {
+    try {
+      console.log(`[DB] Поиск пользователя по email: ${email}`);
+      const { rows } = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+      return rows[0];
+    } catch (error) {
+      console.error(`[DB] Ошибка поиска пользователя: ${error.message}`);
+      throw error;
+    }
+  }
+
+  static async findById(id) {
+    try {
+      const { rows } = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
+      return rows[0];
+    } catch (error) {
+      console.error(`[DB] Ошибка поиска пользователя: ${error.message}`);
+      throw error;
+    }
+  }
+
+  static async createUser(name, email, passwordHash) {
+    const { rows } = await pool.query(
+      'INSERT INTO users (name, email, password_hash) VALUES ($1, $2, $3) RETURNING *',
+      [name, email, passwordHash]
+    );
+    return rows[0];
+  }
+}
+module.exports = User;
+
+
+===== server/node =====
+
+
+===== server/package.json =====
+{
+  "name": "zvonok",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "bcrypt": "^5.1.1",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "express-router": "^0.0.1",
+    "jsonwebtoken": "^9.0.2",
+    "mediasoup": "^3.15.7",
+    "multer": "^1.4.5-lts.2",
+    "path-to-regexp": "^8.2.0",
+    "pg": "^8.15.6",
+    "simple-peer": "^9.11.1",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1"
+  }
+}
+
+
+===== server/routes/auth.routes.js =====
+const express = require('express');
+const router = express.Router();
+const authController = require('../controllers/auth.controller');
+const authMiddleware = require('../middleware/auth');
+
+router.get('/profile', authMiddleware, async (req, res) => {
+    try {
+        // Получаем полные данные пользователя из БД
+        const user = await User.findById(req.user.id);
+        if (!user) {
+            return res.status(404).json({ error: "User not found" });
+        }
+
+        // Отправляем данные пользователя
+        res.json({
+            user: {
+                id: user.id,
+                name: user.name,
+                email: user.email
+            }
+        });
+
+    } catch (error) {
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+router.post('/register', authController.register);
+router.post('/login', authController.login);
+
+module.exports = router;
+
+
+===== server/routes/call.routes.js =====
+const express = require('express');
+const router = express.Router();
+const webrtcService = require('../services/webrtc.service');
+const authMiddleware = require('../middleware/auth');
+
+router.post('/initiate', authMiddleware, (req, res) => {
+  const roomId = webrtcService.generateRoomId();
+  res.json({ roomId });
+});
+
+router.get('/ice-servers', (req, res) => {
+  res.json({ servers: webrtcService.getICEServers() });
+});
+
+module.exports = router;
+
+
+===== server/routes/chat.routes.js =====
+const express = require('express');
+const router = express.Router();
+const chatController = require('../controllers/chat.controller');
+const authMiddleware = require('../middleware/auth');
+const upload = require("../middleware/upload");
+
+router.post('/messages', authMiddleware, chatController.sendMessage);
+router.get('/rooms/:roomId/messages', authMiddleware, chatController.getMessages);
+router.post('/voice',
+    authMiddleware,
+    (req, res, next) => {
+        console.log("Middleware: Проверка аутентификации");
+        next();
+    },
+    upload.single('voice'),
+    (req, res, next) => {
+        console.log("Файл:", req.file); // Добавьте лог файла
+        next();
+    },
+    chatController.sendVoiceMessage
+);
+
+module.exports = router;
+
+
+===== server/routes/room.routes.js =====
+const express = require("express");
+const router = express.Router();
+const roomController = require("../controllers/room.controller");
+const authMiddleware = require("../middleware/auth");
+
+router.post("/", authMiddleware, roomController.createRoom);
+router.get("/:roomId", authMiddleware, roomController.getRoom);
+router.get("/", authMiddleware, roomController.getAllRooms);
+
+module.exports = router;
+
+
+===== server/routes/task.routes.js =====
+const express = require('express');
+const router = express.Router();
+const taskController = require('../controllers/task.controller');
+const authMiddleware = require('../middleware/auth');
+
+router.post('/', authMiddleware, taskController.createTask);
+router.get('/', authMiddleware, taskController.getTasks);
+router.patch('/:taskId', authMiddleware, taskController.updateTask);
+
+module.exports = router;
+
+
+===== server/services/webrtc.service.js =====
+class WebRTCService {
+  constructor() {
+    this.iceServers = [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { 
+        urls: 'turn:your-turn-server.com',
+        username: 'user',
+        credential: 'password'
+      }
+    ];
+  }
+
+  getICEServers() {
+    return this.iceServers;
+  }
+
+  generateRoomId() {
+    return Math.random().toString(36).substr(2, 9);
+  }
+}
+
+module.exports = new WebRTCService();
+
+
+===== server/sql/sql.sql =====
+-- Создаем тип для статуса задачи (если используете ENUM)
+CREATE TYPE task_status AS ENUM ('todo', 'in_progress', 'done');
+
+-- Таблица пользователей
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    --org_id INTEGER,  -- Если есть таблица organizations, добавьте FOREIGN KEY
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Таблица комнат (чаты/конференции)
+CREATE TABLE rooms (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255),
+    type VARCHAR(20) CHECK (type IN ('chat', 'conference')),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Таблица сообщений
+CREATE TABLE messages (
+    id SERIAL PRIMARY KEY,
+    text TEXT,
+    sender_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    room_id INTEGER REFERENCES rooms(id) ON DELETE CASCADE,
+    is_voice_message BOOLEAN DEFAULT FALSE,
+    file_url VARCHAR(512),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Таблица задач (вариант с ENUM)
+CREATE TABLE tasks (
+    id SERIAL PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    status task_status DEFAULT 'todo',
+    assignee_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    deadline TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Индексы для ускорения поиска
+CREATE INDEX idx_messages_room ON messages(room_id);
+CREATE INDEX idx_tasks_assignee ON tasks(assignee_id);
+
+

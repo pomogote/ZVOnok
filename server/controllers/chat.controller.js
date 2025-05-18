@@ -21,18 +21,30 @@ async function uploadToCloud(file) {
 
 exports.sendMessage = async (req, res) => {
   try {
-    const { text, roomId, isVoiceMessage, fileUrl } = req.body;
+    const { text, roomId } = req.body;
 
-    //проверка существования комнаты
-    const room = await Room.findById(roomId);
-    if (!room) {
-      return res.status(404).json({ error: "Комната не найдена" });
-    }
+    // Валидация
+    if (!text?.trim()) return res.status(400).json({ error: "Пустое сообщение" });
+    if (!roomId) return res.status(400).json({ error: "Не указана комната" });
 
-    const message = await Message.create(text, req.userId, roomId, isVoiceMessage, fileUrl);
-    res.status(201).json(message);
+    // Проверка существования комнаты
+    const roomExists = await Room.findById(roomId);
+    if (!roomExists) return res.status(404).json({ error: "Комната не найдена" });
+
+    // Создание сообщения
+    const message = await Message.create(text, req.userId, roomId);
+
+    // Получение информации об авторе
+    const user = await User.findById(req.userId);
+
+    res.status(201).json({
+      ...message,
+      sender_name: user.name
+    });
+
   } catch (error) {
-    res.status(500).json({ error: 'Failed to send message' });
+    console.error('Ошибка:', error);
+    res.status(500).json({ error: error.message });
   }
 };
 
@@ -55,6 +67,9 @@ exports.sendVoiceMessage = async (req, res) => {
     if (!user) {
       return res.status(404).json({ error: "Пользователь не найден" });
     }
+
+    console.log('Received roomId:', req.body.roomId);
+    console.log('File:', req.file);
 
     const fileUrl = `/uploads/voice/${voiceFile.filename}`;
 

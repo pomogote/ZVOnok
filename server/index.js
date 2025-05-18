@@ -142,11 +142,25 @@ io.on('connection', (socket) => {
   // Отправка сообщения в комнату
   socket.on('sendMessage', async (data) => {
     try {
-      const { text, roomId } = data;
-      const message = await Message.create(text, socket.userId, roomId);
-      io.to(roomId).emit('newMessage', message);
+      console.log('Получено сообщение через сокет:', data);
+
+      const message = await Message.create(
+        data.text,
+        socket.userId,
+        data.roomId
+      );
+
+      // Добавляем имя отправителя
+      const user = await User.findById(socket.userId);
+      const messageWithSender = {
+        ...message,
+        sender_name: user.name
+      };
+
+      // Отправляем всем в комнате, включая отправителя
+      io.to(data.roomId).emit('newMessage', messageWithSender);
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error('Ошибка обработки сообщения:', error);
     }
   });
 
