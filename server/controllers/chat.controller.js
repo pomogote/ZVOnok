@@ -51,6 +51,8 @@ exports.sendMessage = async (req, res) => {
 exports.sendVoiceMessage = async (req, res) => {
   try {
     const { roomId } = req.body;
+    console.log('Parsed roomId:', roomId);
+    if (!roomId) return res.status(400).json({ error: "Не указана комната" });
     const voiceFile = req.file;
 
     if (!voiceFile) {

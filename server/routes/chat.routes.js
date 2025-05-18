@@ -6,13 +6,12 @@ const upload = require("../middleware/upload");
 
 router.post('/messages', authMiddleware, chatController.sendMessage);
 router.get('/rooms/:roomId/messages', authMiddleware, chatController.getMessages);
-router.post('/voice',
-    authMiddleware,
+router.post('/voice', authMiddleware,
+    upload.single('voice'),
     (req, res, next) => {
         console.log("Middleware: Проверка аутентификации");
         next();
     },
-    upload.single('voice'),
     (req, res, next) => {
         console.log("Файл:", req.file); // Добавьте лог файла
         req.body.roomId = req.body.roomId;

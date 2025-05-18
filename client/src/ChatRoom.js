@@ -110,7 +110,7 @@ function VoiceRecorder({ roomId, token, onSend }) {
             const blob = new Blob(audioChunks, { type: 'audio/webm' });
             const formData = new FormData();
             formData.append('voice', blob, `recording.webm`);
-            formData.append('roomId', roomId.toString());
+            formData.append('roomId', roomId);
 
             // Отправляем на сервер
             const res = await axios.post(
@@ -118,8 +118,8 @@ function VoiceRecorder({ roomId, token, onSend }) {
                 formData,
                 {
                     headers: {
-                        Authorization: `Bearer ${token}`,
-                        'Content-Type': 'multipart/form-data'
+                        Authorization: `Bearer ${token}`//,
+                        //'Content-Type': 'multipart/form-data'
                     }
                 }
             );
