@@ -4,7 +4,7 @@ const fs = require('fs');
 const pool = require('./config/db');
 const socketAuth = require('./middleware/socketAuth');
 const Message = require('./models/message.model');
-const User    = require('./models/user.model');
+const User = require('./models/user.model');
 const path = require('path');
 const chatController = require('./controllers/chat.controller');
 
