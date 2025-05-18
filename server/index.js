@@ -133,14 +133,11 @@ io.on('connection', (socket) => {
   // Отправка сообщения в комнату
   socket.on('sendMessage', async (data) => {
     try {
-      console.log('Получено сообщение через сокет:', data);
-      console.log('📝 sendMessage received:', { text, roomId });
+      const { text, roomId } = data;
+      const message = await Message.create(text, socket.userId, roomId);
 
-      const message = await Message.create(
-        data.text,
-        socket.userId,
-        data.roomId
-      );
+      console.log('Получено сообщение через сокет:', data);
+      console.log('📝 sendMessage received:', { text: data.text, roomId: data.roomId });
 
       // Добавляем имя отправителя
       const user = await User.findById(socket.userId);
