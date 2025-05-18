@@ -58,17 +58,25 @@ exports.sendVoiceMessage = async (req, res) => {
     if (!voiceFile) {
       return res.status(400).json({ error: "Файл не загружен" });
     }
+    
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(404).json({ error: "Пользователь не найден" });
+    }
 
     const room = await Room.findById(roomId);
     if (!room) {
       return res.status(404).json({ error: "Комната не найдена" });
     }
+    console.log('[sendVoiceMessage] Токен:', req.headers.authorization);
+    console.log('[sendVoiceMessage] req.userId:', req.userId);
+    console.log('[sendVoiceMessage] Найденный пользователь:', user);
 
-    // Получение данных пользователя
-    const user = await User.findById(req.userId);
-    if (!user) {
-      return res.status(404).json({ error: "Пользователь не найден" });
+
+    if (!req.userId) {
+      return res.status(401).json({ error: "Токен недействителен" });
     }
+    // Получение данных пользователя
 
     console.log('Received roomId:', req.body.roomId);
     console.log('File:', req.file);
