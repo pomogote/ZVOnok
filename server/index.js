@@ -67,9 +67,11 @@ global._io = io;
 chatController.setIO(io);
 
 io.use((socket, next) => {
-  const token = socket.handshake.auth.token;
+  const header = socket.handshake.headers.authorization;
   if (!token) return next(new Error('Authentication error'));
 
+
+  const token = header.replace('Bearer ', '');
   jwt.verify(token, 'your_jwt_secret', (err, decoded) => {
     if (err) return next(new Error('Invalid token'));
     socket.userId = decoded.userId;

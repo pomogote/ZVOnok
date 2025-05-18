@@ -13,17 +13,9 @@ export default function ChatRoom({ token, userId, username, room, onLeave }) {
     const socketRef = useRef();
 
     useEffect(() => {
-        
-        socketRef.current = io(SOCKET_URL, {
-            auth: { token },
-            query: { roomId: room.id } // Добавьте ID комнаты в параметры
-        });
 
-        // Добавьте обработчик ошибок
-        socketRef.current.on('connect_error', (err) => {
-            console.error('Socket error:', err.message);
-            alert('Ошибка подключения к чату');
-        });
+        //подключение к токену
+        socketRef.current = io(SOCKET_URL, { auth: { token } });
 
         socketRef.current.emit('joinRoom', room.id);
 
@@ -44,27 +36,7 @@ export default function ChatRoom({ token, userId, username, room, onLeave }) {
 
     const sendMessage = () => {
         if (!text.trim()) return;
-
-        // Добавляем подтверждение доставки
-        socketRef.current.emit(
-            'sendMessage',
-            { text, roomId: room.id },
-            (ack) => {
-                if (ack?.error) {
-                    alert('Ошибка отправки: ' + ack.error);
-                }
-            }
-        );
-
-        // Оптимистичное обновление
-        setMessages(prev => [...prev, {
-            text,
-            sender_id: userId,
-            sender_name: username,
-            created_at: new Date().toISOString(),
-            is_voice_message: false
-        }]);
-
+        socketRef.current.emit('sendMessage', { text, roomId: room.id });
         setText('');
     };
 
@@ -136,30 +108,24 @@ function VoiceRecorder({ roomId, token, onSend }) {
             setAudioChunks((prev) => [...prev, e.data]);
         };
         recorder.onstop = async () => {
-            try {
-                const blob = new Blob(audioChunks, { type: 'audio/webm' });
-                const formData = new FormData();
-                formData.append('voice', blob, `recording.webm`);
-                formData.append('roomId', roomId.toString());
+            const blob = new Blob(audioChunks, { type: 'audio/webm' });
+            const formData = new FormData();
+            formData.append('voice', blob, `recording.webm`);
+            formData.append('roomId', roomId.toString());
 
-                const res = await axios.post(
-                    `${API_URL}/api/chat/voice`,
-                    formData,
-                    {
-                        headers: {
-                            Authorization: `Bearer ${token}`,
-                            'Content-Type': 'multipart/form-data'
-                        }
+            // Отправляем на сервер
+            const res = await axios.post(
+                `${API_URL}/api/chat/voice`,
+                formData,
+                {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        'Content-Type': 'multipart/form-data'
                     }
-                );
-
-                // Если сервер не отправляет через сокет
-                if (onSend) onSend(res.data);
-
-            } catch (error) {
-                console.error('Ошибка отправки аудио:', error.response?.data || error.message);
-                alert('Не удалось отправить голосовое сообщение');
-            }
+                }
+            );
+            // onSend нужен чтобы сразу отобразить сообщение в чате, если сервер не пушит через сокет
+            if (onSend) onSend(res.data);
         };
 
         recorder.start();
