@@ -4,6 +4,7 @@ const fs = require('fs');
 const pool = require('./config/db');
 const socketAuth = require('./middleware/socketAuth');
 const Message = require('./models/message.model');
+const User    = require('./models/user.model');
 const path = require('path');
 const chatController = require('./controllers/chat.controller');
 
@@ -66,19 +67,6 @@ io.use(socketAuth);
 global._io = io;
 chatController.setIO(io);
 
-io.use((socket, next) => {
-  const header = socket.handshake.headers.authorization;
-  if (!token) return next(new Error('Authentication error'));
-
-
-  const token = header.replace('Bearer ', '');
-  jwt.verify(token, 'your_jwt_secret', (err, decoded) => {
-    if (err) return next(new Error('Invalid token'));
-    socket.userId = decoded.userId;
-    next();
-  });
-});
-
 // Хранилище для отслеживания участников комнат
 const voiceRooms = new Map();
 
@@ -87,6 +75,7 @@ const activeConnections = new Map(); // roomId → Set<peerId>
 const peerConfigs = new Map(); // peerId → { type: 'call' | 'conference', roomId }
 
 io.on('connection', (socket) => {
+  console.log('🔥 new socket connection, socket.userId =', socket.userId);
   console.log('User connected:', socket.id);
 
   // Подписка на комнату чата
@@ -145,6 +134,7 @@ io.on('connection', (socket) => {
   socket.on('sendMessage', async (data) => {
     try {
       console.log('Получено сообщение через сокет:', data);
+      console.log('📝 sendMessage received:', { text, roomId });
 
       const message = await Message.create(
         data.text,

@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
-import io from 'socket.io-client';
 import { fetchMessages } from './api';
 import Call from './Call';
 import axios from 'axios';
+import createSocket from './socket';
 
 const SOCKET_URL = 'http://localhost:3000';
 
@@ -15,8 +15,7 @@ export default function ChatRoom({ token, userId, username, room, onLeave }) {
     useEffect(() => {
 
         //подключение к токену
-        socketRef.current = io(SOCKET_URL, { auth: { token } });
-
+        socketRef.current = createSocket(token);
         socketRef.current.emit('joinRoom', room.id);
 
         socketRef.current.on('newMessage', (msg) => {
