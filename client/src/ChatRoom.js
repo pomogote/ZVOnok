@@ -73,7 +73,13 @@ export default function ChatRoom({ token, userId, username, room, onLeave }) {
                 placeholder="Введите сообщение"
             />
             <button onClick={sendMessage}>Отправить</button>
-            <VoiceRecorder roomId={room.id} token={token} />
+            <VoiceRecorder
+                roomId={room.id}
+                token={token}
+                onSend={(newMsg) => {
+                    setMessages(prev => [...prev, newMsg]);
+                }}
+            />
 
             {callUser && (
                 <Call
