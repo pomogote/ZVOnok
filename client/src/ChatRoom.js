@@ -19,10 +19,7 @@ export default function ChatRoom({ token, userId, username, room, onLeave }) {
         socketRef.current.emit('joinRoom', room.id);
 
         socketRef.current.on('newMessage', (msg) => {
-            socketRef.current.on('newMessage', (msg) => {
-                console.log('[Клиент] Новое сообщение:', msg);
-                setMessages(prev => [...prev, msg]);
-            });
+            console.log('[Клиент] Новое сообщение:', msg);
             setMessages(prev => [...prev, msg]);
         });
 

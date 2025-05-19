@@ -90,7 +90,7 @@ exports.sendVoiceMessage = async (req, res) => {
     // Формируем объект для отправки через сокет
     const voiceMessage = {
       ...message,
-      user_name: user.name,
+      sender_name: user.name, //or user_name
       user_id: user.id, // Добавляем ID отправителя
       file_url: fileUrl,
       is_voice_message: true,
