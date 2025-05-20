@@ -51,6 +51,9 @@ exports.sendMessage = async (req, res) => {
 exports.sendVoiceMessage = async (req, res) => {
   try {
     const roomId = req.body.roomId;
+    const userId = req.userId;
+    const user = await User.findById(userId);
+    const fileUrl = `/uploads/voice/${req.file.filename}`;
 
     if (!roomId) {
       return res.status(400).json({ error: "Не указана комната" });
@@ -65,7 +68,6 @@ exports.sendVoiceMessage = async (req, res) => {
       return res.status(401).json({ error: "Токен недействителен" });
     }
 
-    const user = await User.findById(req.userId);
     if (!user) {
       return res.status(404).json({ error: "Пользователь не найден" });
     }
@@ -75,46 +77,26 @@ exports.sendVoiceMessage = async (req, res) => {
       return res.status(404).json({ error: "Комната не найдена" });
     }
 
-    // Формируем URL для доступа к файлу
-    const fileUrl = `/uploads/voice/${voiceFile.filename}`;
-
     // Создаём запись сообщения в БД
-    const message = await Message.create({
-      user_id: req.userId,
-      room_id: roomId,
-      is_voice_message: true,
-      file_url: `/uploads/${req.file.filename}`, // или как у вас
-    });
-    global._io.to(`room_${roomId}`).emit('newMessage', message);
+    const message = await Message.create(
+      "",          // text пустой
+      userId,      // sender_id
+      roomId,      // room_id
+      true,        // is_voice_message
+      fileUrl      // file_url
+    );
 
-    // Формируем объект для отправки через сокет
-    const voiceMessage = {
+    const payload = {
       ...message,
-      sender_name: user.name, //or user_name
-      user_id: user.id, // Добавляем ID отправителя
-      file_url: fileUrl,
+      user_id: userId,      // добавляем user_id для клиента
+      sender_name: user.name,
       is_voice_message: true,
-      created_at: new Date().toISOString()
+      file_url: fileUrl
     };
-
-    // Логируем для отладки
-    console.log('[sendVoiceMessage] Отправка через сокет:', voiceMessage);
-
-    console.log('[Сервер] Отправка голосового сообщения:', {
-      roomId,
-      fileUrl: voiceMessage.file_url,
-      user: voiceMessage.user_name
-    });
-
-    // Отправляем новое сообщение всем участникам комнаты
-    if (io) {
-      io.to(roomId).emit('newMessage', voiceMessage);
-    }
+    global._io.to(String(roomId)).emit('newMessage', payload);
 
     // Отправляем ответ клиенту с данными сообщения
-    res.status(201).json(voiceMessage);
-    
-    return res.json(message);
+    return res.status(201).json(payload);
   } catch (error) {
     console.error("Ошибка в sendVoiceMessage:", error);
     res.status(500).json({
