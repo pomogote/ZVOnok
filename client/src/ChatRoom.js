@@ -4,7 +4,6 @@ import createSocket from './socket';
 import Call from './Call';
 import VoiceRecorder from './VoiceRecorder';
 
-const SOCKET_URL = 'http://localhost:3000';
 const API_URL = process.env.REACT_APP_API_URL;
 
 export default function ChatRoom({ token, userId, username, room, onLeave }) {
@@ -105,18 +104,24 @@ export default function ChatRoom({ token, userId, username, room, onLeave }) {
                                 <button
                                     onClick={() => onDeleteClick(msg.id)}
                                     style={{
-                                        position: 'absolute', right: 0, top: 0,
-                                        background: 'transparent', border: 'none',
-                                        cursor: 'pointer', color: '#ff4444'
+                                        position: 'absolute',
+                                        right: 0,
+                                        top: 0,
+                                        background: '#ff4444',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        padding: '2px 6px',
+                                        cursor: 'pointer'
                                     }}
                                 >
-                                    ×
+                                    Удалить
                                 </button>
                             )}
 
                             <b>{author}:</b>{' '}
                             {msg.is_voice_message
-                                ? <audio controls src={`${SOCKET_URL}${msg.file_url}`} />
+                                ? <audio controls src={`${API_URL}${msg.file_url}`} />
                                 : msg.text
                             }
 
@@ -124,9 +129,17 @@ export default function ChatRoom({ token, userId, username, room, onLeave }) {
                             {isMine && !msg.is_voice_message && (
                                 <button
                                     onClick={() => onEditClick(msg)}
-                                    style={{ marginLeft: 10, background: 'transparent', border: 'none', cursor: 'pointer' }}
+                                    style={{
+                                        marginLeft: 10,
+                                        background: '#4CAF50',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        padding: '2px 6px',
+                                        cursor: 'pointer'
+                                    }}
                                 >
-                                    ✏️
+                                    Редакт.
                                 </button>
                             )}
 

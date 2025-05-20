@@ -36,19 +36,15 @@ export const deleteRoom = async (roomId, token) => {
 };
 
 export const updateMessage = (token, messageId, text) => {
-    fetch(`/api/messages/${messageId}`, {
-        method: 'PUT',
+    return axios.put(`${API_URL}/api/messages/${messageId}`, { text }, {
         headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ text }),
-    }).then(res => res.json());
+            Authorization: `Bearer ${token}`
+        }
+    });
 };
 
 export const deleteMessage = (token, messageId) => {
-    fetch(`/api/messages/${messageId}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-    }).then(res => res.json());
+    return axios.delete(`${API_URL}/api/messages/${messageId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+    });
 };

@@ -93,7 +93,8 @@ exports.sendVoiceMessage = async (req, res) => {
       is_voice_message: true,
       file_url: fileUrl
     };
-    global._io.to(String(roomId)).emit('newMessage', payload);
+    //global._io.to(String(roomId)).emit('newMessage', payload); //deepseek
+    io.to(String(roomId)).emit('newMessage', payload);
 
     // Отправляем ответ клиенту с данными сообщения
     return res.status(201).json(payload);

@@ -43,6 +43,7 @@ export default function VoiceRecorder({ roomId, token, onSend }) {
     }
   };
 
+  
   const stopRecording = () => {
     if (mediaRecorder) {
       mediaRecorder.stop();
