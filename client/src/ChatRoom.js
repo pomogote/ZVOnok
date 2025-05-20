@@ -21,8 +21,11 @@ export default function ChatRoom({ token, userId, username, room, onLeave }) {
 
         // 3) Подписки на события
         socketRef.current.on('newMessage', msg => {
-            console.log('[Клиент] Новое сообщение:', msg);
-            setMessages(prev => [...prev, msg]);
+            setMessages(prev => {
+                // если уже есть с таким id — не добавляем
+                if (prev.some(m => m.id === msg.id)) return prev;
+                return [...prev, msg];
+            });
         });
         socketRef.current.on('message-updated', ({ messageId, text }) => {
             setMessages(prev =>
@@ -97,33 +100,37 @@ export default function ChatRoom({ token, userId, username, room, onLeave }) {
                     const isMine = String(msg.user_id) === String(userId);
 
                     return (
-                        <div key={msg.id} style={{ marginBottom: '10px', position: 'relative' }}>
+                        <div key={msg.id} style={{ position: 'relative', marginBottom: 10 }}>
                             {isMine && (
                                 <button
                                     onClick={() => onDeleteClick(msg.id)}
                                     style={{
-                                        position: 'absolute',
-                                        right: 0,
-                                        top: 0,
-                                        background: 'transparent',
-                                        border: 'none',
-                                        cursor: 'pointer',
-                                        color: '#ff4444'
+                                        position: 'absolute', right: 0, top: 0,
+                                        background: 'transparent', border: 'none',
+                                        cursor: 'pointer', color: '#ff4444'
                                     }}
                                 >
                                     ×
                                 </button>
                             )}
+
                             <b>{author}:</b>{' '}
                             {msg.is_voice_message
                                 ? <audio controls src={`${SOCKET_URL}${msg.file_url}`} />
                                 : msg.text
                             }
-                            {isMine && (
-                                <span style={{ marginLeft: 10 }}>
-                                    <button onClick={() => onEditClick(msg)}>✏️</button>
-                                </span>
+
+                            {/* Редактировать — только текстовые */}
+                            {isMine && !msg.is_voice_message && (
+                                <button
+                                    onClick={() => onEditClick(msg)}
+                                    style={{ marginLeft: 10, background: 'transparent', border: 'none', cursor: 'pointer' }}
+                                >
+                                    ✏️
+                                </button>
                             )}
+
+                            {/* Звонок другим */}
                             {!isMine && (
                                 <button
                                     style={{ marginLeft: 10 }}

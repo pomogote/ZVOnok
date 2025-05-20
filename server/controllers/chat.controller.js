@@ -50,7 +50,7 @@ exports.sendMessage = async (req, res) => {
 
 exports.sendVoiceMessage = async (req, res) => {
   try {
-    const { roomId } = req.body;
+    const roomId = req.body.roomId;
 
     if (!roomId) {
       return res.status(400).json({ error: "Не указана комната" });
@@ -79,13 +79,13 @@ exports.sendVoiceMessage = async (req, res) => {
     const fileUrl = `/uploads/voice/${voiceFile.filename}`;
 
     // Создаём запись сообщения в БД
-    const message = await Message.create(
-      "", // пустой текст для голосового сообщения
-      req.userId,
-      roomId,
-      true, // is_voice_message = true
-      fileUrl
-    );
+    const message = await Message.create({
+      user_id: req.userId,
+      room_id: roomId,
+      is_voice_message: true,
+      file_url: `/uploads/${req.file.filename}`, // или как у вас
+    });
+    global._io.to(`room_${roomId}`).emit('newMessage', message);
 
     // Формируем объект для отправки через сокет
     const voiceMessage = {
@@ -113,7 +113,8 @@ exports.sendVoiceMessage = async (req, res) => {
 
     // Отправляем ответ клиенту с данными сообщения
     res.status(201).json(voiceMessage);
-
+    
+    return res.json(message);
   } catch (error) {
     console.error("Ошибка в sendVoiceMessage:", error);
     res.status(500).json({
