@@ -93,15 +93,23 @@ export default function App() {
                 {room.name}
               </button>
 
-              {/* Кнопка удаления */}
+              {/* Кнопка удаления (только для создателя) */}
               {room.creator_id === userId && (
                 <button
-                  onClick={() => handleDeleteRoom(room.id)}
+                  onClick={() => {
+                    if (window.confirm(`Удалить комнату "${room.name}"?`)) {
+                      deleteRoom(room.id, token)
+                        .then(() => setRooms(prev => prev.filter(r => r.id !== room.id)))
+                        .catch(error => console.error('Ошибка удаления:', error));
+                    }
+                  }}
                   style={{
-                    marginLeft: '10px',
-                    color: 'red',
-                    background: 'none',
+                    background: 'red',
+                    color: 'white',
                     border: 'none',
+                    borderRadius: '50%',
+                    width: '24px',
+                    height: '24px',
                     cursor: 'pointer'
                   }}
                 >

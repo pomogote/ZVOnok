@@ -123,6 +123,30 @@ exports.sendVoiceMessage = async (req, res) => {
   }
 };
 
+exports.deleteMessage = async (req, res) => {
+
+  try {
+    const { messageId } = req.params;
+
+    // Проверка прав доступа
+    const message = await Message.findById(messageId);
+    if (!message) {
+      return res.status(404).json({ error: "Сообщение не найдено" });
+    }
+
+    if (message.sender_id !== req.userId) {
+      return res.status(403).json({ error: "Вы можете удалять только свои сообщения" });
+    }
+
+    await Message.delete(messageId);
+    io.to(message.room_id).emit('message-deleted', { messageId });
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Ошибка удаления сообщения" });
+  }
+
+};
 
 exports.getMessages = async (req, res) => {
   try {

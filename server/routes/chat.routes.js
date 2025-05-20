@@ -6,6 +6,7 @@ const upload = require("../middleware/upload");
 
 router.post('/messages', authMiddleware, chatController.sendMessage);
 router.get('/rooms/:roomId/messages', authMiddleware, chatController.getMessages);
+router.delete('/messages/:messageId', authMiddleware, chatController.deleteMessage);
 router.post('/voice', authMiddleware,
     upload.single('voice'),
     (req, res, next) => {

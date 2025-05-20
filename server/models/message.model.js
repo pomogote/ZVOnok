@@ -36,6 +36,23 @@ class Message {
     );
     return rows;
   }
+
+  static async delete(messageId) {
+    const { rowCount } = await pool.query(
+      "DELETE FROM messages WHERE id = $1",
+      [messageId]
+    );
+    return rowCount > 0;
+  }
+
+  static async findById(messageId) {
+    const { rows } = await pool.query(
+      "SELECT * FROM messages WHERE id = $1",
+      [messageId]
+    );
+    return rows[0];
+  }
+
 }
 
 module.exports = Message;

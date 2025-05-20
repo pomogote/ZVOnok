@@ -5,6 +5,7 @@ import axios from 'axios';
 import createSocket from './socket';
 
 const SOCKET_URL = 'http://localhost:3000';
+const API_URL = process.env.REACT_APP_API_URL;
 
 export default function ChatRoom({ token, userId, username, room, onLeave }) {
     const [messages, setMessages] = useState([]);
@@ -23,6 +24,10 @@ export default function ChatRoom({ token, userId, username, room, onLeave }) {
             setMessages(prev => [...prev, msg]);
         });
 
+        socketRef.current.on('message-deleted', ({ messageId }) => {
+            setMessages(prev => prev.filter(m => m.id !== messageId));
+        });
+
         socketRef.current.on('incoming-call', ({ fromUserId, fromUserName }) => {
             if (window.confirm(`Входящий звонок от ${fromUserName}. Принять?`)) {
                 setCallUser({ id: fromUserId, name: fromUserName, incoming: true });
@@ -30,7 +35,12 @@ export default function ChatRoom({ token, userId, username, room, onLeave }) {
         });
         fetchMessages(room.id, token).then(setMessages);
 
-        return () => socketRef.current.disconnect();
+        return () => {
+            // Исправлено: правильный порядок очистки
+            socketRef.current.off('message-deleted');
+            socketRef.current.disconnect();
+        };
+
 
     }, [room.id, token]);
 
@@ -44,25 +54,78 @@ export default function ChatRoom({ token, userId, username, room, onLeave }) {
         setCallUser({ id: targetUserId, name: targetUserName, incoming: false });
     };
 
+    const handleDeleteMessage = async (messageId) => {
+        if (window.confirm('Удалить это сообщение?')) {
+            try {
+                await axios.delete(`${API_URL}/api/chat/messages/${messageId}`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                setMessages(prev => prev.filter(m => m.id !== messageId));
+            } catch (error) {
+                console.error('Ошибка удаления:', error.response?.data?.error || error.message);
+            }
+        }
+    };
+
     return (
         <div>
             <h2>Комната: {room.name}</h2>
             <button onClick={onLeave}>Выйти из комнаты</button>
             <div style={{ height: 300, overflowY: 'auto', border: '1px solid #ccc', margin: '10px 0' }}>
-                {messages.map((msg, idx) => (
-                    <div key={idx} style={{ marginBottom: '10px' }}>
+                {messages.map((msg) => (
+                    <div key={msg.id} style={{ marginBottom: '10px', position: 'relative' }}>
+                        {/* Добавлена кнопка удаления */}
+                        {msg.user_id === userId && (
+                            <button
+                                onClick={() => handleDeleteMessage(msg.id)}
+                                style={{
+                                    position: 'absolute',
+                                    right: 0,
+                                    top: 0,
+                                    background: 'transparent',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    color: '#ff4444'
+                                }}
+                            >
+                                ×
+                            </button>
+                        )}
                         <b>{msg.sender_name || 'User'}:</b>{' '}
                         {msg.is_voice_message ? (
                             <audio controls src={`http://localhost:3000${msg.file_url}`} />
                         ) : (
                             msg.text
                         )}
+                        {/* Кнопка звонка */}
                         {msg.user_id !== userId && (
 
                             <button style={{ marginLeft: 10 }} onClick={() => startCall(msg.user_id, msg.user_name)}>
                                 Позвонить
                             </button>
                         )}
+                    </div>
+
+                ))}
+                {messages.map((msg, idx) => (
+                    <div key={msg.id} style={{ marginBottom: '10px', position: 'relative' }}>
+                        {msg.user_id === userId && (
+                            <button
+                                onClick={() => handleDeleteMessage(msg.id)}
+                                style={{
+                                    position: 'absolute',
+                                    right: 0,
+                                    top: 0,
+                                    background: 'transparent',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    color: '#ff4444'
+                                }}
+                            >
+                                ×
+                            </button>
+                        )}
+                        {/* Остальное содержимое сообщения */}
                     </div>
                 ))}
             </div>
