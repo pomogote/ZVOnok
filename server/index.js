@@ -7,6 +7,7 @@ const Message = require('./models/message.model');
 const User = require('./models/user.model');
 const path = require('path');
 const chatController = require('./controllers/chat.controller');
+const callService = require('./services/call.service');
 
 pool.query('SELECT NOW()', (err) => {
   if (err) {
@@ -44,6 +45,10 @@ app.use('/api/calls', require('./routes/call.routes'));
 // Profile endpoint
 app.get('/api/profile', require('./middleware/auth'), (req, res) => {
   res.json({ userId: req.userId });
+});
+
+app.get('/api/calls/active', (req, res) => {
+  res.json(Array.from(callService.activeCalls.entries()));
 });
 
 //Перехват необработанных исключений
@@ -159,18 +164,23 @@ io.on('connection', (socket) => {
 
   // Инициализация звонка 1:1
   socket.on('initiate-call', ({ targetUserId, roomId }) => {
-    socket.join(roomId);
-    activeConnections.set(roomId, new Set([socket.id]));
-    peerConfigs.set(socket.id, { type: 'call', roomId });
-    socket.to(roomId).emit('incoming-call', { callerId: socket.id });
+    const callId = callService.initiateCall(socket.userId, targetUserId, roomId);
+    io.to(targetUserId).emit('incoming-call', {
+      callId,
+      fromUserId: socket.userId,
+      roomId
+    });
   });
 
   // Принятие входящего звонка
-  socket.on('accept-call', ({ roomId }) => {
-    socket.join(roomId);
-    const peers = activeConnections.get(roomId);
-    peers.add(socket.id);
-    io.to(roomId).emit('call-accepted', { participants: Array.from(peers) });
+  socket.on('accept-call', ({ callId }) => {
+    if (callService.acceptCall(callId, socket.userId)) {
+      const call = callService.activeCalls.get(callId);
+      io.to(call.initiatorId).emit('call-accepted', {
+        callId,
+        targetUserId: socket.userId
+      });
+    }
   });
 
   // Создание конференции

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Login from './Login';
 import ChatRoom from './ChatRoom';
-import { fetchRooms } from './api';
+import { fetchRooms, createRoom, deleteRoom } from './api';
 
 export default function App() {
   const [token, setToken] = useState('');
@@ -9,12 +9,43 @@ export default function App() {
   const [username, setUsername] = useState('');
   const [rooms, setRooms] = useState([]);
   const [currentRoom, setCurrentRoom] = useState(null);
+  const [newRoomName, setNewRoomName] = useState(''); // Для создания новых комнат
 
   useEffect(() => {
     if (token) {
       fetchRooms(token).then(setRooms);
     }
   }, [token]);
+
+  const refreshRooms = () => {
+    fetchRooms(token).then(setRooms);
+  };
+
+  const handleCreateRoom = async () => {
+    if (!newRoomName.trim()) return;
+
+    try {
+      const newRoom = await createRoom(newRoomName, token);
+      setRooms(prev => [...prev, newRoom]);
+      setNewRoomName('');
+    } catch (error) {
+      console.error('Ошибка создания комнаты:', error);
+      alert('Не удалось создать комнату');
+    }
+  };
+
+  const handleDeleteRoom = async (roomId) => {
+    if (!window.confirm('Вы уверены, что хотите удалить комнату?')) return;
+
+    try {
+      await deleteRoom(roomId, token);
+      setRooms(prev => prev.filter(room => room.id !== roomId));
+      if (currentRoom?.id === roomId) setCurrentRoom(null);
+    } catch (error) {
+      console.error('Ошибка удаления комнаты:', error);
+      alert('Не удалось удалить комнату');
+    }
+  };
 
   if (!token) {
     return <Login onLogin={(tok, uid, uname) => {
@@ -26,20 +57,72 @@ export default function App() {
 
   if (!currentRoom) {
     return (
-      <div>
+      <div style={{ padding: '20px', maxWidth: '600px', margin: '0 auto' }}>
         <h2>Чаты</h2>
-        <ul>
+
+        {/* Форма создания комнаты */}
+        <div style={{ marginBottom: '20px' }}>
+          <input
+            value={newRoomName}
+            onChange={(e) => setNewRoomName(e.target.value)}
+            placeholder="Название новой комнаты"
+            style={{ marginRight: '10px', padding: '5px' }}
+          />
+          <button onClick={handleCreateRoom}>Создать комнату</button>
+        </div>
+
+        {/* Список комнат */}
+        <ul style={{ listStyle: 'none', padding: 0 }}>
           {rooms.map(room => (
-            <li key={room.id}>
-              <button onClick={() => setCurrentRoom(room)}>{room.name}</button>
+            <li
+              key={room.id}
+              style={{
+                margin: '10px 0',
+                padding: '10px',
+                border: '1px solid #ddd',
+                borderRadius: '5px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}
+            >
+              <button
+                onClick={() => setCurrentRoom(room)}
+                style={{ flexGrow: 1, textAlign: 'left' }}
+              >
+                {room.name}
+              </button>
+
+              {/* Кнопка удаления */}
+              {room.creator_id === userId && (
+                <button
+                  onClick={() => handleDeleteRoom(room.id)}
+                  style={{
+                    marginLeft: '10px',
+                    color: 'red',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer'
+                  }}
+                >
+                  ×
+                </button>
+              )}
             </li>
           ))}
         </ul>
-        <button onClick={() => {
-          setToken('');
-          setUserId('');
-          setUsername('');
-        }}>Выйти</button>
+
+        {/* Кнопка выхода */}
+        <button
+          onClick={() => {
+            setToken('');
+            setUserId('');
+            setUsername('');
+          }}
+          style={{ marginTop: '20px' }}
+        >
+          Выйти
+        </button>
       </div>
     );
   }

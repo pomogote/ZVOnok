@@ -1,15 +1,18 @@
 const express = require('express');
 const router = express.Router();
-const webrtcService = require('../services/webrtc.service');
 const authMiddleware = require('../middleware/auth');
+const activeCalls = require('../services/call.service');
 
 router.post('/initiate', authMiddleware, (req, res) => {
-  const roomId = webrtcService.generateRoomId();
-  res.json({ roomId });
+  const { targetUserId, roomId } = req.body;
+  const callId = activeCalls.initiateCall(req.userId, targetUserId, roomId);
+  res.json({ callId });
 });
 
-router.get('/ice-servers', (req, res) => {
-  res.json({ servers: webrtcService.getICEServers() });
+router.post('/accept', authMiddleware, (req, res) => {
+  const { callId } = req.body;
+  const success = activeCalls.acceptCall(callId, req.userId);
+  res.json({ success });
 });
 
 module.exports = router;

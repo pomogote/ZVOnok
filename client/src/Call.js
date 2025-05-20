@@ -2,20 +2,42 @@ import React, { useEffect, useRef, useState } from 'react';
 import Peer from 'simple-peer';
 
 export default function Call({ socket, token, userId, username, roomId, peerUser, onEnd }) {
-  const [stream, setStream] = useState();
-  const [peer, setPeer] = useState();
-  const myVideo = useRef();
-  const userVideo = useRef();
+  const [stream, setStream] = useState(null);
+  const [peer, setPeer] = useState(null);
+  const myVideo = useRef(null);
+  const userVideo = useRef(null);
 
   useEffect(() => {
-    navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then(currentStream => {
-      setStream(currentStream);
-      myVideo.current.srcObject = currentStream;
+    // Проверка поддержки медиаустройств
+    if (!navigator.mediaDevices?.getUserMedia) {
+      alert('Браузер не поддерживает доступ к медиаустройствам');
+      return;
+    }
 
-      if (!peerUser.incoming) {
-        // Инициатор звонка
-        const p = new Peer({ initiator: true, trickle: false, stream: currentStream });
-        p.on('signal', data => {
+    let currentPeer = null;
+    let currentStream = null;
+
+    const initializeCall = async () => {
+      try {
+        // Получаем медиапоток
+        currentStream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true
+        });
+
+        setStream(currentStream);
+        myVideo.current.srcObject = currentStream;
+
+        // Инициализация Peer соединения
+        const isInitiator = !peerUser.incoming;
+        currentPeer = new Peer({
+          initiator: isInitiator,
+          trickle: false,
+          stream: currentStream
+        });
+
+        // Обработка сигналов WebRTC
+        currentPeer.on('signal', data => {
           socket.emit('webrtc-signal', {
             roomId,
             toUserId: peerUser.id,
@@ -23,62 +45,73 @@ export default function Call({ socket, token, userId, username, roomId, peerUser
             signal: data
           });
         });
-        p.on('stream', userStream => {
+
+        currentPeer.on('stream', userStream => {
           userVideo.current.srcObject = userStream;
         });
-        setPeer(p);
 
-        socket.emit('initiate-call', {
-          targetUserId: peerUser.id,
-          roomId,
-          fromUserName: username
-        });
+        // Обработка входящих сигналов
+        const signalHandler = ({ signal }) => currentPeer.signal(signal);
+        socket.on('webrtc-signal', signalHandler);
 
-        socket.on('webrtc-signal', ({ signal }) => {
-          p.signal(signal);
-        });
-      } else {
-        // Принимающий звонок
-        const p = new Peer({ initiator: false, trickle: false, stream: currentStream });
-        p.on('signal', data => {
-          socket.emit('webrtc-signal', {
+        // Инициируем/принимаем звонок
+        if (isInitiator) {
+          socket.emit('initiate-call', {
+            targetUserId: peerUser.id,
             roomId,
-            toUserId: peerUser.id,
-            fromUserId: userId,
-            signal: data
+            fromUserName: username
           });
-        });
-        p.on('stream', userStream => {
-          userVideo.current.srcObject = userStream;
-        });
-        setPeer(p);
+        } else {
+          socket.emit('accept-call', {
+            callId: peerUser.callId,
+            fromUserId: userId,
+            roomId
+          });
+        }
 
-        socket.on('webrtc-signal', ({ signal }) => {
-          p.signal(signal);
-        });
+        setPeer(currentPeer);
 
-        socket.emit('accept-call', {
-          fromUserId: userId,
-          targetUserId: peerUser.id,
-          roomId
-        });
+      } catch (error) {
+        console.error('Ошибка инициализации звонка:', error);
+        handleMediaError(error);
       }
-    });
-
-    return () => {
-      if (peer) peer.destroy();
-      if (stream) stream.getTracks().forEach(track => track.stop());
-      socket.off('webrtc-signal');
     };
-    // eslint-disable-next-line
-  }, []);
+
+    const handleMediaError = (error) => {
+      let errorMessage = 'Ошибка доступа к устройствам:';
+      
+      if (error.name === 'NotFoundError') {
+        errorMessage += '\n- Устройства не найдены';
+      } else if (error.name === 'NotAllowedError') {
+        errorMessage += '\n- Доступ запрещен';
+      } else {
+        errorMessage += '\n- Неизвестная ошибка';
+      }
+
+      alert(`${errorMessage}\nПроверьте:\n1. Разрешения браузера\n2. Подключенные устройства\n3. HTTPS соединение`);
+      onEnd();
+    };
+
+    initializeCall();
+
+    // Очистка при размонтировании
+    return () => {
+      if (currentPeer) {
+        currentPeer.destroy();
+        socket.off('webrtc-signal');
+      }
+      if (currentStream) {
+        currentStream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []); // Пустой массив зависимостей - монтируется один раз
 
   return (
-    <div style={{border:'2px solid blue', padding:10, margin:10}}>
+    <div style={{ border: '2px solid blue', padding: 10, margin: 10 }}>
       <h3>Звонок с {peerUser.name}</h3>
-      <div style={{display:'flex', gap:10}}>
-        <video ref={myVideo} autoPlay muted style={{width:150}} />
-        <video ref={userVideo} autoPlay style={{width:150}} />
+      <div style={{ display: 'flex', gap: 10 }}>
+        <video ref={myVideo} autoPlay muted playsInline style={{ width: 150 }} />
+        <video ref={userVideo} autoPlay playsInline style={{ width: 150 }} />
       </div>
       <button onClick={onEnd}>Завершить звонок</button>
     </div>

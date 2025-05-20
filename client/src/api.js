@@ -21,3 +21,16 @@ export const fetchMessages = async (roomId, token) => {
     );
     return res.data;
 };
+
+export const createRoom = async (name, token) => {
+    const res = await axios.post(`${API_URL}/api/rooms`, { name }, {
+        headers: { Authorization: `Bearer ${token}` }
+    });
+    return res.data;
+};
+
+export const deleteRoom = async (roomId, token) => {
+    await axios.delete(`${API_URL}/api/rooms/${roomId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+    });
+};
