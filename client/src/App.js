@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Login from './Login';
 import ChatRoom from './ChatRoom';
 import { fetchRooms, createRoom, deleteRoom } from './api';
+import createSocket from './socket';
 
 export default function App() {
   const [token, setToken] = useState('');
@@ -10,10 +11,29 @@ export default function App() {
   const [rooms, setRooms] = useState([]);
   const [currentRoom, setCurrentRoom] = useState(null);
   const [newRoomName, setNewRoomName] = useState(''); // Для создания новых комнат
+  const socketRef = useRef(null);
 
   useEffect(() => {
     if (token) {
+      // инициализируем сокет при логине
+      socketRef.current = createSocket(token);
+
+      // подписываемся на создание комнаты
+      socketRef.current.on('room-created', room => {
+        setRooms(prev => [...prev, room]);
+      });
+
+      // подписываемся на удаление
+      socketRef.current.on('room-deleted', ({ roomId }) => {
+        setRooms(prev => prev.filter(r => r.id !== roomId));
+      });
+
+      // первый запрос для первоначального списка
       fetchRooms(token).then(setRooms);
+
+      return () => {
+        socketRef.current.disconnect();
+      };
     }
   }, [token]);
 
@@ -25,8 +45,8 @@ export default function App() {
     if (!newRoomName.trim()) return;
 
     try {
-      const newRoom = await createRoom(newRoomName, token);
-      setRooms(prev => [...prev, newRoom]);
+      // создаём комнату на сервере — клиент добавит её по socket-событию 'room-created'
+      await createRoom(newRoomName, token);
       setNewRoomName('');
     } catch (error) {
       console.error('Ошибка создания комнаты:', error);

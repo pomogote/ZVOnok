@@ -34,3 +34,21 @@ export const deleteRoom = async (roomId, token) => {
         headers: { Authorization: `Bearer ${token}` }
     });
 };
+
+export const updateMessage = (token, messageId, text) => {
+    fetch(`/api/messages/${messageId}`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ text }),
+    }).then(res => res.json());
+};
+
+export const deleteMessage = (token, messageId) => {
+    fetch(`/api/messages/${messageId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+    }).then(res => res.json());
+};

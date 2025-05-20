@@ -8,6 +8,7 @@ const User = require('./models/user.model');
 const path = require('path');
 const chatController = require('./controllers/chat.controller');
 const callService = require('./services/call.service');
+const messageRoutes = require('./routes/message.routes');
 
 pool.query('SELECT NOW()', (err) => {
   if (err) {
@@ -23,6 +24,8 @@ const app = express();
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+app.use('/api/messages', messageRoutes);
 
 // CORS Configuration
 const cors = require('cors');

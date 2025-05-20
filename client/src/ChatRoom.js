@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { fetchMessages } from './api';
-import Call from './Call';
-import axios from 'axios';
+import { fetchMessages, updateMessage, deleteMessage } from './api';
 import createSocket from './socket';
+import Call from './Call';
+import VoiceRecorder from './VoiceRecorder';
 
 const SOCKET_URL = 'http://localhost:3000';
 const API_URL = process.env.REACT_APP_API_URL;
@@ -14,34 +14,41 @@ export default function ChatRoom({ token, userId, username, room, onLeave }) {
     const socketRef = useRef();
 
     useEffect(() => {
-
-        //подключение к токену
+        // 1) Инициализация сокета
         socketRef.current = createSocket(token);
+        // 2) Входим в комнату
         socketRef.current.emit('joinRoom', room.id);
 
-        socketRef.current.on('newMessage', (msg) => {
+        // 3) Подписки на события
+        socketRef.current.on('newMessage', msg => {
             console.log('[Клиент] Новое сообщение:', msg);
             setMessages(prev => [...prev, msg]);
         });
-
+        socketRef.current.on('message-updated', ({ messageId, text }) => {
+            setMessages(prev =>
+                prev.map(m => (m.id === messageId ? { ...m, text } : m))
+            );
+        });
         socketRef.current.on('message-deleted', ({ messageId }) => {
             setMessages(prev => prev.filter(m => m.id !== messageId));
         });
-
         socketRef.current.on('incoming-call', ({ fromUserId, fromUserName }) => {
             if (window.confirm(`Входящий звонок от ${fromUserName}. Принять?`)) {
                 setCallUser({ id: fromUserId, name: fromUserName, incoming: true });
             }
         });
+
+        // 4) Загрузка истории
         fetchMessages(room.id, token).then(setMessages);
 
         return () => {
-            // Исправлено: правильный порядок очистки
+            // снятие всех подписок и дисконнект
+            socketRef.current.off('newMessage');
+            socketRef.current.off('message-updated');
             socketRef.current.off('message-deleted');
+            socketRef.current.off('incoming-call');
             socketRef.current.disconnect();
         };
-
-
     }, [room.id, token]);
 
     const sendMessage = () => {
@@ -54,13 +61,24 @@ export default function ChatRoom({ token, userId, username, room, onLeave }) {
         setCallUser({ id: targetUserId, name: targetUserName, incoming: false });
     };
 
-    const handleDeleteMessage = async (messageId) => {
-        if (window.confirm('Удалить это сообщение?')) {
+    // обработчик редактирования:
+    const onEditClick = async (message) => {
+        const newText = prompt('Новый текст сообщения:', message.text);
+        if (newText != null && newText !== message.text) {
             try {
-                await axios.delete(`${API_URL}/api/chat/messages/${messageId}`, {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
-                setMessages(prev => prev.filter(m => m.id !== messageId));
+                await updateMessage(token, message.id, newText);
+                // локально ничего не делаем — ждём socket 'message-updated'
+            } catch (error) {
+                console.error('Ошибка обновления:', error.response?.data?.error || error.message);
+            }
+        }
+    };
+
+    const onDeleteClick = async (messageId) => {
+        if (window.confirm('Удалить сообщение?')) {
+            try {
+                await deleteMessage(token, messageId);
+                // локально ничего не делаем — ждём socket 'message-deleted'
             } catch (error) {
                 console.error('Ошибка удаления:', error.response?.data?.error || error.message);
             }
@@ -71,64 +89,54 @@ export default function ChatRoom({ token, userId, username, room, onLeave }) {
         <div>
             <h2>Комната: {room.name}</h2>
             <button onClick={onLeave}>Выйти из комнаты</button>
+
             <div style={{ height: 300, overflowY: 'auto', border: '1px solid #ccc', margin: '10px 0' }}>
-                {messages.map((msg) => (
-                    <div key={msg.id} style={{ marginBottom: '10px', position: 'relative' }}>
-                        {/* Добавлена кнопка удаления */}
-                        {msg.user_id === userId && (
-                            <button
-                                onClick={() => handleDeleteMessage(msg.id)}
-                                style={{
-                                    position: 'absolute',
-                                    right: 0,
-                                    top: 0,
-                                    background: 'transparent',
-                                    border: 'none',
-                                    cursor: 'pointer',
-                                    color: '#ff4444'
-                                }}
-                            >
-                                ×
-                            </button>
-                        )}
-                        <b>{msg.sender_name || 'User'}:</b>{' '}
-                        {msg.is_voice_message ? (
-                            <audio controls src={`http://localhost:3000${msg.file_url}`} />
-                        ) : (
-                            msg.text
-                        )}
-                        {/* Кнопка звонка */}
-                        {msg.user_id !== userId && (
+                {messages.map(msg => {
+                    // имя автора: отдаёт при live-сообщении или из истории
+                    const author = msg.sender_name || msg.user_name || 'Unknown';
+                    const isMine = String(msg.user_id) === String(userId);
 
-                            <button style={{ marginLeft: 10 }} onClick={() => startCall(msg.user_id, msg.user_name)}>
-                                Позвонить
-                            </button>
-                        )}
-                    </div>
-
-                ))}
-                {messages.map((msg, idx) => (
-                    <div key={msg.id} style={{ marginBottom: '10px', position: 'relative' }}>
-                        {msg.user_id === userId && (
-                            <button
-                                onClick={() => handleDeleteMessage(msg.id)}
-                                style={{
-                                    position: 'absolute',
-                                    right: 0,
-                                    top: 0,
-                                    background: 'transparent',
-                                    border: 'none',
-                                    cursor: 'pointer',
-                                    color: '#ff4444'
-                                }}
-                            >
-                                ×
-                            </button>
-                        )}
-                        {/* Остальное содержимое сообщения */}
-                    </div>
-                ))}
+                    return (
+                        <div key={msg.id} style={{ marginBottom: '10px', position: 'relative' }}>
+                            {isMine && (
+                                <button
+                                    onClick={() => onDeleteClick(msg.id)}
+                                    style={{
+                                        position: 'absolute',
+                                        right: 0,
+                                        top: 0,
+                                        background: 'transparent',
+                                        border: 'none',
+                                        cursor: 'pointer',
+                                        color: '#ff4444'
+                                    }}
+                                >
+                                    ×
+                                </button>
+                            )}
+                            <b>{author}:</b>{' '}
+                            {msg.is_voice_message
+                                ? <audio controls src={`${SOCKET_URL}${msg.file_url}`} />
+                                : msg.text
+                            }
+                            {isMine && (
+                                <span style={{ marginLeft: 10 }}>
+                                    <button onClick={() => onEditClick(msg)}>✏️</button>
+                                </span>
+                            )}
+                            {!isMine && (
+                                <button
+                                    style={{ marginLeft: 10 }}
+                                    onClick={() => setCallUser({ id: msg.user_id, name: author, incoming: false })}
+                                >
+                                    Позвонить
+                                </button>
+                            )}
+                        </div>
+                    );
+                })}
             </div>
+
             <input
                 value={text}
                 onChange={e => setText(e.target.value)}
@@ -136,13 +144,8 @@ export default function ChatRoom({ token, userId, username, room, onLeave }) {
                 placeholder="Введите сообщение"
             />
             <button onClick={sendMessage}>Отправить</button>
-            <VoiceRecorder
-                roomId={room.id}
-                token={token}
-                onSend={(newMsg) => {
-                    setMessages(prev => [...prev, newMsg]);
-                }}
-            />
+
+            <VoiceRecorder roomId={room.id} token={token} onSend={newMsg => setMessages(prev => [...prev, newMsg])} />
 
             {callUser && (
                 <Call
@@ -154,62 +157,6 @@ export default function ChatRoom({ token, userId, username, room, onLeave }) {
                     peerUser={callUser}
                     onEnd={() => setCallUser(null)}
                 />
-            )}
-        </div>
-    );
-}
-
-function VoiceRecorder({ roomId, token, onSend }) {
-    const API_URL = process.env.REACT_APP_API_URL;
-    const [recording, setRecording] = useState(false);
-    const [mediaRecorder, setMediaRecorder] = useState(null);
-    const audioChunksRef = useRef([]);
-
-    const startRecording = async () => {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const recorder = new window.MediaRecorder(stream);
-        setMediaRecorder(recorder);
-        audioChunksRef.current = [];
-
-        recorder.ondataavailable = (e) => {
-            if (e.data.size > 0) {
-                audioChunksRef.current.push(e.data);
-            }
-        };
-        recorder.onstop = async () => {
-            if (audioChunksRef.current.length === 0) {
-                alert("Не удалось записать аудио. Попробуйте ещё раз.");
-                return;
-            }
-            const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-            const formData = new FormData();
-            formData.append('voice', blob, `recording.webm`);
-            formData.append('roomId', roomId);
-
-            const res = await axios.post(
-                `${API_URL}/api/chat/voice`,
-                formData,
-                { headers: { Authorization: `Bearer ${token}` } }
-            );
-            if (onSend) onSend(res.data);
-        };
-        recorder.start();
-        setRecording(true);
-    };
-
-    const stopRecording = () => {
-        if (mediaRecorder) {
-            mediaRecorder.stop();
-            setRecording(false);
-        }
-    };
-
-    return (
-        <div>
-            {!recording ? (
-                <button onClick={startRecording}>🎤 Записать голос</button>
-            ) : (
-                <button onClick={stopRecording}>⏹️ Остановить</button>
             )}
         </div>
     );
