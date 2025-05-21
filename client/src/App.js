@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Login from './Login';
+import Register from './Register';
 import ChatRoom from './ChatRoom';
 import { fetchRooms, createRoom, deleteRoom } from './api';
 import createSocket from './socket';
 
 export default function App() {
-  const [token, setToken]       = useState('');
-  const [userId, setUserId]     = useState('');
+  const [token, setToken] = useState('');
+  const [userId, setUserId] = useState('');
   const [username, setUsername] = useState('');
   const [showRegister, setShowRegister] = useState(false);
   const [rooms, setRooms] = useState([]);
@@ -69,24 +70,29 @@ export default function App() {
   };
 
   if (!token) {
-    return showRegister
-      ? <Register onRegistered={() => setShowRegister(false)} />
-      : <Login
-          onLogin={(tok, uid, uname) => {
-            setToken(tok);
-            setUserId(uid);
-            setUsername(uname);
-          }}
-        />;
+    return (
+      <div style={{ padding: 20, maxWidth: 400, margin: '0 auto' }}>
+        {showRegister
+          ? <Register onRegistered={() => setShowRegister(false)} />
+          : <Login
+            onLogin={(tok, uid, uname) => {
+              setToken(tok);
+              setUserId(uid);
+              setUsername(uname);
+            }}
+          />
+        }
+        <div style={{ marginTop: 10, textAlign: 'center' }}>
+          <button
+            onClick={() => setShowRegister(!showRegister)}
+            style={{ background: 'none', border: 'none', color: '#06c', cursor: 'pointer' }}
+          >
+            {showRegister ? 'Уже есть аккаунт? Войти' : 'Нет аккаунта? Зарегистрироваться'}
+          </button>
+        </div>
+      </div>
+    );
   }
-
-  // Кнопка-переключатель внизу login/register
-  // Под ней можно вывести:
-  {!token && (
-    <button onClick={() => setShowRegister(!showRegister)}>
-      {showRegister ? 'Есть аккаунт? Войти' : 'Нет аккаунта? Зарегистрироваться'}
-    </button>
-  )}
 
   if (!currentRoom) {
     return (
