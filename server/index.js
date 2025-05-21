@@ -83,6 +83,30 @@ io.on('connection', socket => {
   // Chat room join
   socket.on('joinRoom', roomId => socket.join(roomId));
 
+  socket.on('sendMessage', async (data) => {
+    try {
+      const { text, roomId } = data;
+      if (!text?.trim()) return;
+
+      // Сохраняем в БД
+      const message = await Message.create(text, socket.userId, roomId);
+      // Берём имя отправителя
+      const user = await User.findById(socket.userId);
+
+      // Собираем полезную нагрузку
+      const payload = {
+        ...message,
+        sender_name: user.name
+      };
+
+      // Эмитим всем в комнате
+      io.to(roomId).emit('newMessage', payload);
+      console.log('📨 sendMessage:', payload);
+    } catch (err) {
+      console.error('Ошибка в sendMessage:', err);
+    }
+  });
+
   // 1:1 call and chat logic omitted…
 
   // Conference events
