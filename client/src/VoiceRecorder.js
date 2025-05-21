@@ -27,12 +27,12 @@ export default function VoiceRecorder({ roomId, token, onSend }) {
         formData.append('voice', blob, `recording.webm`);
         formData.append('roomId', roomId);
 
-        const res = await axios.post(
-          `${process.env.REACT_APP_API_URL}/api/chat/voice`,
-          formData,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        if (onSend) onSend(res.data);
+        // const res = await axios.post(
+        //   `${process.env.REACT_APP_API_URL}/api/chat/voice`,
+        //   formData,
+        //   { headers: { Authorization: `Bearer ${token}` } }
+        // ).then(res => onSend(res.data))
+        socketRef.current.emit('sendVoice', { roomId, file: formData });
       };
 
       recorder.start();
@@ -43,7 +43,7 @@ export default function VoiceRecorder({ roomId, token, onSend }) {
     }
   };
 
-  
+
   const stopRecording = () => {
     if (mediaRecorder) {
       mediaRecorder.stop();

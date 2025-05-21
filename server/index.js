@@ -161,6 +161,12 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('sendVoice', async data => {
+    // сохраняем файл через chatController.sendVoiceMessage
+    const payload = await chatController.sendVoiceMessageSocket(data, socket.userId);
+    io.to(data.roomId).emit('newMessage', payload);
+  });
+
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
   });

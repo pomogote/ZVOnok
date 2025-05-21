@@ -22,11 +22,7 @@ export default function ChatRoom({ token, userId, username, room, onLeave }) {
 
         // 3) Подписки на события
         socketRef.current.on('newMessage', msg => {
-            setMessages(prev => {
-                // если уже есть с таким id — не добавляем
-                if (prev.some(m => m.id === msg.id)) return prev;
-                return [...prev, msg];
-            });
+            setMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg]);
         });
         socketRef.current.on('message-updated', ({ messageId, text }) => {
             setMessages(prev =>
@@ -104,7 +100,8 @@ export default function ChatRoom({ token, userId, username, room, onLeave }) {
                 {messages.map(msg => {
                     // имя автора: отдаёт при live-сообщении или из истории
                     const author = msg.sender_name || msg.user_name || 'Unknown';
-                    const isMine = String(msg.user_id) === String(userId);
+                    const authorId = msg.user_id || msg.sender_id;
+                    const isMine = String(authorId) === String(userId);
 
                     return (
                         <div key={msg.id} style={{ position: 'relative', marginBottom: 10 }}>
@@ -173,7 +170,7 @@ export default function ChatRoom({ token, userId, username, room, onLeave }) {
             />
             <button onClick={sendMessage}>Отправить</button>
 
-            <VoiceRecorder roomId={room.id} token={token} onSend={msg => setMessages(prev => [...prev, msg])}/>
+            <VoiceRecorder roomId={room.id} token={token} onSend={msg => setMessages(prev => [...prev, msg])} />
 
             {callUser && (
                 <Call
