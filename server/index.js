@@ -1,3 +1,7 @@
+// import process from 'process';
+// window.process = {
+//   env: { NODE_ENV: process.env.NODE_ENV }
+// };
 const express = require('express');
 const http = require('http');
 const fs = require('fs');
@@ -201,27 +205,14 @@ io.on('connection', (socket) => {
   });
 
   // Присоединение к конференции
-  socket.on('join-conference', (roomId) => {
-    const peers = activeConnections.get(roomId) || new Set();
-    peers.add(socket.id);
-    activeConnections.set(roomId, peers);
-    peerConfigs.set(socket.id, { type: 'conference', roomId });
-
-    // Уведомить существующих участников
-    socket.to(roomId).emit('new-participant', { peerId: socket.id });
-
-    // Отправить список текущих участников
-    const participants = Array.from(peers);
-    socket.emit('existing-participants', { participants });
+  socket.on('join-conference', ({ roomId, userId, username }) => {
+    socket.join(roomId);
+    socket.to(roomId).emit('new-conference-participant', { peerId: socket.id, initiatorId: userId });
   });
 
   // Обработка WebRTC-сигналов
-  socket.on('webrtc-signal', ({ signal, targetPeerId, roomId }) => {
-    socket.to(targetPeerId).emit('webrtc-signal', {
-      senderId: socket.id,
-      signal,
-      roomId
-    });
+  socket.on('webrtc-signal', ({ target, senderId, signal, roomId }) => {
+    socket.to(target).emit('webrtc-signal', { senderId, signal, roomId });
   });
 
   // Демонстрация экрана
@@ -236,21 +227,11 @@ io.on('connection', (socket) => {
 
   // Отключение
   socket.on('disconnect', () => {
-    const config = peerConfigs.get(socket.id);
-    if (config) {
-      const roomId = config.roomId;
-      const peers = activeConnections.get(roomId);
-      peers.delete(socket.id);
-
-      if (peers.size === 0) {
-        activeConnections.delete(roomId);
-      } else {
-        io.to(roomId).emit('participant-left', { peerId: socket.id });
-      }
-
-      peerConfigs.delete(socket.id);
-    }
-    console.log('User disconnected:', socket.id);
+    // при отключении
+    const rooms = Array.from(socket.rooms).filter(r => r !== socket.id);
+    rooms.forEach(roomId => {
+      socket.to(roomId).emit('conference-participant-left', { peerId: socket.id });
+    });
   });
 
 });

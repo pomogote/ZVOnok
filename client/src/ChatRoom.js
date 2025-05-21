@@ -22,7 +22,9 @@ export default function ChatRoom({ token, userId, username, room, onLeave }) {
 
         // 3) Подписки на события
         socketRef.current.on('newMessage', msg => {
-            setMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg]);
+            setMessages(prev =>
+                prev.some(m => m.id === msg.id) ? prev : [...prev, msg]
+            );
         });
         socketRef.current.on('message-updated', ({ messageId, text }) => {
             setMessages(prev =>
@@ -170,7 +172,11 @@ export default function ChatRoom({ token, userId, username, room, onLeave }) {
             />
             <button onClick={sendMessage}>Отправить</button>
 
-            <VoiceRecorder roomId={room.id} token={token} onSend={msg => setMessages(prev => [...prev, msg])} />
+            <VoiceRecorder
+                roomId={room.id}
+                token={token}
+                onSend={msg => setMessages(prev => [...prev, msg])}
+            />
 
             {callUser && (
                 <Call

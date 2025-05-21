@@ -9,54 +9,66 @@ export default function ConferenceCall({ socket, userId, username = 'User', room
     const peersRef = useRef([]);
     const myVideo = useRef(null);
 
-    const initMedia = async () => {
-        try {
-            const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => null);
-            const videoStream = await navigator.mediaDevices.getUserMedia({ video: true }).catch(() => null);
-
-            const combinedStream = new MediaStream([
-                ...(audioStream?.getTracks() || []),
-                ...(videoStream?.getTracks() || [])
-            ]);
-
-            setStream(combinedStream);
-            if (videoStream) myVideo.current.srcObject = combinedStream;
-
-            socket.emit('join-conference', roomId);
-
-        } catch (err) {
-            setError(`Ошибка инициализации: ${err.message}`);
-        }
-    };
-
-    const handleNewParticipant = (peerId) => {
-        const peer = new Peer({
-            initiator: true,
-            trickle: false,
-            stream: stream || undefined,
-            config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
-        });
-
-        peer.on('signal', signal => {
-            socket.emit('webrtc-signal', { targetPeerId: peerId, signal, roomId });
-        });
-
-        peer.on('error', err => console.error('Peer error:', err));
-
-        peersRef.current.push({ peerId, peer });
-        setPeers(prev => [...prev, { peerId, peer }]);
-    };
-
     useEffect(() => {
-        initMedia();
+        // Инициализация медиа и подключение к конференции
+        const init = async () => {
+            try {
+                // Получаем аудио и видео потоки
+                const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => null);
+                const videoStream = await navigator.mediaDevices.getUserMedia({ video: true }).catch(() => null);
+                const combined = new MediaStream([
+                    ...(audioStream?.getTracks() || []),
+                    ...(videoStream?.getTracks() || [])
+                ]);
+                setStream(combined);
+                if (myVideo.current) myVideo.current.srcObject = combined;
 
-        socket.on('new-participant', handleNewParticipant);
-        socket.on('webrtc-signal', ({ senderId, signal }) => {
-            const peerObj = peersRef.current.find(p => p.peerId === senderId);
-            if (peerObj?.peer) peerObj.peer.signal(signal);
+                // После получения потока подключаемся к комнате
+                socket.emit('join-conference', { roomId, peerId: socket.id });
+            } catch (err) {
+                setError(`Ошибка инициализации: ${err.message}`);
+            }
+        };
+        init();
+
+        // Обработчики сигналов WebRTC
+        socket.on('new-conference-participant', ({ peerId }) => {
+            // Игнорируем себя
+            if (peerId === socket.id) return;
+            // Если уже есть peer с таким id, не повторяем
+            if (peersRef.current.some(p => p.peerId === peerId)) return;
+
+            const peer = new Peer({ initiator: true, trickle: false, stream });
+            peer.on('signal', signal => {
+                socket.emit('webrtc-signal', { target: peerId, senderId: socket.id, signal, roomId });
+            });
+            peer.on('error', e => console.error('Peer error:', e));
+
+            peersRef.current.push({ peerId, peer });
+            setPeers(list => [...list, { peerId, peer }]);
         });
 
-        socket.on('participant-left', ({ peerId }) => {
+        socket.on('webrtc-signal', ({ senderId, signal }) => {
+            // Игнорируем собственные сигналлы
+            if (senderId === socket.id) return;
+            // Если peer существует — передаём сигнал, иначе создаём приёмник
+            let item = peersRef.current.find(p => p.peerId === senderId);
+            if (item) {
+                item.peer.signal(signal);
+            } else {
+                const peer = new Peer({ initiator: false, trickle: false, stream });
+                peer.on('signal', sig => {
+                    socket.emit('webrtc-signal', { target: senderId, senderId: socket.id, signal: sig, roomId });
+                });
+                peer.on('error', e => console.error('Peer error:', e));
+                peer.signal(signal);
+
+                peersRef.current.push({ peerId: senderId, peer });
+                setPeers(list => [...list, { peerId: senderId, peer }]);
+            }
+        });
+
+        socket.on('conference-participant-left', ({ peerId }) => {
             peersRef.current = peersRef.current.filter(p => {
                 if (p.peerId === peerId) {
                     p.peer.destroy();
@@ -64,36 +76,29 @@ export default function ConferenceCall({ socket, userId, username = 'User', room
                 }
                 return true;
             });
-            setPeers(prev => prev.filter(p => p.peerId !== peerId));
+            setPeers(list => list.filter(p => p.peerId !== peerId));
         });
 
         return () => {
-            socket.off('new-participant');
+            socket.off('new-conference-participant');
             socket.off('webrtc-signal');
-            socket.off('participant-left');
-            stream?.getTracks().forEach(track => track.stop());
+            socket.off('conference-participant-left');
+            stream?.getTracks().forEach(t => t.stop());
             peersRef.current.forEach(p => p.peer.destroy());
         };
-    }, []);
+    }, [socket, stream]);
 
-    const toggleMedia = async (type) => {
-        const hasTrack = stream?.getTracks().some(t => t.kind === type);
-
-        if (hasTrack) {
-            stream.getTracks()
-                .filter(t => t.kind === type)
-                .forEach(t => t.stop());
+    const toggleMedia = async type => {
+        const has = stream?.getTracks().some(t => t.kind === type && t.enabled);
+        if (has) {
+            stream.getTracks().filter(t => t.kind === type).forEach(t => t.stop());
+            setStream(new MediaStream(stream.getTracks().filter(t => t.readyState === 'live')));
         } else {
-            const newStream = await navigator.mediaDevices.getUserMedia({ [type]: true })
-                .catch(() => null);
-
+            const newStream = await navigator.mediaDevices.getUserMedia({ [type]: true }).catch(() => null);
             if (newStream) {
-                const updatedStream = new MediaStream([
-                    ...stream?.getTracks() || [],
-                    ...newStream.getTracks()
-                ]);
-                setStream(updatedStream);
-                if (type === 'video') myVideo.current.srcObject = updatedStream;
+                const updated = new MediaStream([...(stream?.getTracks() || []), ...newStream.getTracks()]);
+                setStream(updated);
+                if (type === 'video' && myVideo.current) myVideo.current.srcObject = updated;
             }
         }
     };
@@ -101,51 +106,24 @@ export default function ConferenceCall({ socket, userId, username = 'User', room
     return (
         <div className="conference-container">
             <h3 className="conference-title">Конференция: {roomId}</h3>
-
             {error && (
                 <div className="error-message">
                     {error}
-                    <button
-                        onClick={initMedia}
-                        className="retry-button">
-                        Повторить попытку
-                    </button>
+                    <button onClick={() => window.location.reload()} className="retry-button">Повторить</button>
                 </div>
             )}
-
             <div className="video-grid">
-                {stream?.getVideoTracks().length > 0 ? (
+                {stream && stream.getVideoTracks().length > 0 ? (
                     <video ref={myVideo} autoPlay muted playsInline className="self-video" />
                 ) : (
-                    <div className="user-avatar">
-                        <span>{(username?.[0] || 'U').toUpperCase()}</span>
-                    </div>
-
+                    <div className="user-avatar"><span>{username[0].toUpperCase()}</span></div>
                 )}
-
-                {peers.map(({ peer, peerId }) => (
-                    <Video key={peerId} peer={peer} />
-                ))}
+                {peers.map(({ peerId, peer }) => (<Video key={peerId} peer={peer} />))}
             </div>
-
             <div className="controls">
-                <button
-                    onClick={() => toggleMedia('audio')}
-                    className={`control-button ${stream?.getAudioTracks().length ? 'active' : ''}`}>
-                    {stream?.getAudioTracks().length ? '🔊' : '🔇'}
-                </button>
-
-                <button
-                    onClick={() => toggleMedia('video')}
-                    className={`control-button ${stream?.getVideoTracks().length ? 'active' : ''}`}>
-                    {stream?.getVideoTracks().length ? '📷' : '📵'}
-                </button>
-
-                <button
-                    onClick={onEnd}
-                    className="end-button">
-                    Завершить
-                </button>
+                <button onClick={() => toggleMedia('audio')} className={`control-button ${stream?.getAudioTracks().length ? 'active' : ''}`}>🔊</button>
+                <button onClick={() => toggleMedia('video')} className={`control-button ${stream?.getVideoTracks().length ? 'active' : ''}`}>📷</button>
+                <button onClick={onEnd} className="end-button">Завершить</button>
             </div>
         </div>
     );
@@ -153,12 +131,10 @@ export default function ConferenceCall({ socket, userId, username = 'User', room
 
 function Video({ peer }) {
     const ref = useRef();
-
     useEffect(() => {
-        const handleStream = stream => ref.current.srcObject = stream;
+        const handleStream = stream => { ref.current.srcObject = stream; };
         peer.on('stream', handleStream);
         return () => peer.off('stream', handleStream);
-    }, []);
-
+    }, [peer]);
     return <video ref={ref} autoPlay playsInline className="peer-video" />;
 }
