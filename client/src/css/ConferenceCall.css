@@ -1,0 +1,100 @@
+.conference-container {
+    border: 2px solid #4CAF50;
+    border-radius: 8px;
+    padding: 20px;
+    margin: 10px;
+    background: #f8fff8;
+    max-width: 1000px;
+    margin: 20px auto;
+}
+
+.conference-title {
+    color: #2c7a2c;
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.video-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 10px;
+    margin: 20px 0;
+}
+
+.self-video, .peer-video {
+    width: 100%;
+    border-radius: 8px;
+    transform: scaleX(-1);
+    background: #000;
+    aspect-ratio: 16/9;
+}
+
+.user-avatar {
+    width: 100%;
+    aspect-ratio: 16/9;
+    background: #4CAF50;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 48px;
+    color: white;
+    text-transform: uppercase;
+}
+
+.controls {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    margin-top: 20px;
+}
+
+.control-button {
+    padding: 12px 24px;
+    border: none;
+    border-radius: 25px;
+    cursor: pointer;
+    font-size: 18px;
+    background: #e0e0e0;
+    transition: all 0.3s;
+}
+
+.control-button.active {
+    background: #4CAF50;
+    color: white;
+}
+
+.end-button {
+    padding: 12px 24px;
+    background: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 25px;
+    cursor: pointer;
+    font-size: 18px;
+    transition: opacity 0.3s;
+}
+
+.end-button:hover {
+    opacity: 0.9;
+}
+
+.error-message {
+    color: #dc3545;
+    padding: 15px;
+    margin: 15px 0;
+    border: 1px solid #dc3545;
+    border-radius: 8px;
+    background: #fff0f0;
+}
+
+.retry-button {
+    margin-top: 10px;
+    padding: 8px 16px;
+    background: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    display: block;
+}

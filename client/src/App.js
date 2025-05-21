@@ -5,9 +5,10 @@ import { fetchRooms, createRoom, deleteRoom } from './api';
 import createSocket from './socket';
 
 export default function App() {
-  const [token, setToken] = useState('');
-  const [userId, setUserId] = useState('');
+  const [token, setToken]       = useState('');
+  const [userId, setUserId]     = useState('');
   const [username, setUsername] = useState('');
+  const [showRegister, setShowRegister] = useState(false);
   const [rooms, setRooms] = useState([]);
   const [currentRoom, setCurrentRoom] = useState(null);
   const [newRoomName, setNewRoomName] = useState(''); // Для создания новых комнат
@@ -68,12 +69,24 @@ export default function App() {
   };
 
   if (!token) {
-    return <Login onLogin={(tok, uid, uname) => {
-      setToken(tok);
-      setUserId(uid);
-      setUsername(uname);
-    }} />;
+    return showRegister
+      ? <Register onRegistered={() => setShowRegister(false)} />
+      : <Login
+          onLogin={(tok, uid, uname) => {
+            setToken(tok);
+            setUserId(uid);
+            setUsername(uname);
+          }}
+        />;
   }
+
+  // Кнопка-переключатель внизу login/register
+  // Под ней можно вывести:
+  {!token && (
+    <button onClick={() => setShowRegister(!showRegister)}>
+      {showRegister ? 'Есть аккаунт? Войти' : 'Нет аккаунта? Зарегистрироваться'}
+    </button>
+  )}
 
   if (!currentRoom) {
     return (

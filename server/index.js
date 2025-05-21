@@ -191,14 +191,22 @@ io.on('connection', (socket) => {
     socket.join(roomId);
     activeConnections.set(roomId, new Set([socket.id]));
     peerConfigs.set(socket.id, { type: 'conference', roomId });
+    socket.to(roomId).emit('conference-started', { roomId });
   });
 
   // Присоединение к конференции
   socket.on('join-conference', (roomId) => {
-    socket.join(roomId);
-    const peers = activeConnections.get(roomId);
+    const peers = activeConnections.get(roomId) || new Set();
     peers.add(socket.id);
-    io.to(roomId).emit('new-participant', { peerId: socket.id });
+    activeConnections.set(roomId, peers);
+    peerConfigs.set(socket.id, { type: 'conference', roomId });
+
+    // Уведомить существующих участников
+    socket.to(roomId).emit('new-participant', { peerId: socket.id });
+
+    // Отправить список текущих участников
+    const participants = Array.from(peers);
+    socket.emit('existing-participants', { participants });
   });
 
   // Обработка WebRTC-сигналов

@@ -3,6 +3,7 @@ import { fetchMessages, updateMessage, deleteMessage } from './api';
 import createSocket from './socket';
 import Call from './Call';
 import VoiceRecorder from './VoiceRecorder';
+import ConferenceCall from './ConferenceCall';
 
 const API_URL = process.env.REACT_APP_API_URL;
 
@@ -10,6 +11,7 @@ export default function ChatRoom({ token, userId, username, room, onLeave }) {
     const [messages, setMessages] = useState([]);
     const [text, setText] = useState('');
     const [callUser, setCallUser] = useState(null);
+    const [conference, setConference] = useState(false);
     const socketRef = useRef();
 
     useEffect(() => {
@@ -91,6 +93,12 @@ export default function ChatRoom({ token, userId, username, room, onLeave }) {
         <div>
             <h2>Комната: {room.name}</h2>
             <button onClick={onLeave}>Выйти из комнаты</button>
+            <button
+                onClick={() => setConference(true)}
+                style={{ marginLeft: 10 }}
+            >
+                Начать конференцию
+            </button>
 
             <div style={{ height: 300, overflowY: 'auto', border: '1px solid #ccc', margin: '10px 0' }}>
                 {messages.map(msg => {
@@ -176,6 +184,16 @@ export default function ChatRoom({ token, userId, username, room, onLeave }) {
                     roomId={room.id}
                     peerUser={callUser}
                     onEnd={() => setCallUser(null)}
+                />
+            )}
+            {conference && (
+                <ConferenceCall
+                    socket={socketRef.current}
+                    token={token}
+                    userId={userId}
+                    username={username}
+                    roomId={room.id}
+                    onEnd={() => setConference(false)}
                 />
             )}
         </div>
