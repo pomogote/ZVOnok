@@ -13,6 +13,8 @@ export default function ChatRoom({ token, userId, username, room, onLeave }) {
     const [callUser, setCallUser] = useState(null);
     const [conference, setConference] = useState(false);
     const socketRef = useRef();
+    const [inConference, setInConference] = useState(false);
+    const [confRunning, setConfRunning] = useState(false);
 
     useEffect(() => {
         // 1) Инициализация сокета
@@ -39,7 +41,14 @@ export default function ChatRoom({ token, userId, username, room, onLeave }) {
                 setCallUser({ id: fromUserId, name: fromUserName, incoming: true });
             }
         });
-
+        socketRef.current.on('new-conference-participant', () => {
+            setConfRunning(true);
+        });
+        socketRef.current.on('conference-participant-left', () => {
+            // Когда кто-то вышел, считаем, что конференции нет, если вы в ней не остались
+            // (в простейшей реализации)
+            setConfRunning(false);
+        });
         // 4) Загрузка истории
         fetchMessages(room.id, token).then(setMessages);
 
@@ -61,6 +70,22 @@ export default function ChatRoom({ token, userId, username, room, onLeave }) {
 
     const startCall = (targetUserId, targetUserName) => {
         setCallUser({ id: targetUserId, name: targetUserName, incoming: false });
+    };
+
+
+    const handleConferenceToggle = () => {
+        if (!inConference) {
+            // присоединяемся
+            setInConference(true);
+            setConfRunning(true);
+            setConference(true);
+            socketRef.current.emit('join-conference', { roomId: room.id });
+        } else {
+            // выходим
+            setInConference(false);
+            setConference(false);
+            socketRef.current.emit('leave-conference', { roomId: room.id });
+        }
     };
 
     // обработчик редактирования:
@@ -92,10 +117,12 @@ export default function ChatRoom({ token, userId, username, room, onLeave }) {
             <h2>Комната: {room.name}</h2>
             <button onClick={onLeave}>Выйти из комнаты</button>
             <button
-                onClick={() => setConference(true)}
+                onClick={handleConferenceToggle}
                 style={{ marginLeft: 10 }}
             >
-                Начать конференцию
+                {!inConference
+                    ? (confRunning ? 'Присоединиться к конференции' : 'Начать конференцию')
+                    : 'Выйти из конференции'}
             </button>
 
             <div style={{ height: 300, overflowY: 'auto', border: '1px solid #ccc', margin: '10px 0' }}>

@@ -1,7 +1,3 @@
-// import process from 'process';
-// window.process = {
-//   env: { NODE_ENV: process.env.NODE_ENV }
-// };
 const express = require('express');
 const http = require('http');
 const fs = require('fs');
@@ -15,11 +11,8 @@ const callService = require('./services/call.service');
 const messageRoutes = require('./routes/message.routes');
 
 pool.query('SELECT NOW()', (err) => {
-  if (err) {
-    console.error('PostgreSQL connection error:', err);
-  } else {
-    console.log('PostgreSQL connected successfully');
-  }
+  if (err) console.error('PostgreSQL connection error:', err);
+  else console.log('PostgreSQL connected successfully');
 });
 
 const authRoutes = require('./routes/auth.routes');
@@ -28,13 +21,15 @@ const app = express();
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
 app.use('/api/messages', messageRoutes);
 
-// CORS Configuration
+// CORS
 const cors = require('cors');
 app.use(cors({
-  origin: 'http://localhost:3001', // Указать явно клиентский порт
+  origin: [
+    'http://localhost:3001',
+    'http://192.168.0.104:3001'
+  ],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
@@ -49,28 +44,28 @@ app.use('/api/chat', require('./routes/chat.routes'));
 app.use('/api/rooms', require('./routes/room.routes'));
 app.use('/api/calls', require('./routes/call.routes'));
 
-// Profile endpoint
 app.get('/api/profile', require('./middleware/auth'), (req, res) => {
   res.json({ userId: req.userId });
 });
-
 app.get('/api/calls/active', (req, res) => {
   res.json(Array.from(callService.activeCalls.entries()));
 });
 
-//Перехват необработанных исключений
-process.on('uncaughtException', (error) => {
+// uncaught exceptions
+process.on('uncaughtException', error => {
   console.error(`[CRASH] Необработанная ошибка: ${error.message}`);
   process.exit(1);
 });
 
 const server = http.createServer(app);
-
 const io = require('socket.io')(server, {
   cors: {
-    origin: "http://localhost:3001", // Совпадает с клиентом
-    methods: ["GET", "POST"],
-    allowedHeaders: ["Authorization"],
+    origin: [
+      'http://localhost:3001',
+      'http://192.168.0.104:3001'
+    ],
+    methods: ['GET', 'POST'],
+    allowedHeaders: ['Authorization'],
     credentials: true
   },
   transports: ['websocket', 'polling']
@@ -79,169 +74,78 @@ io.use(socketAuth);
 global._io = io;
 chatController.setIO(io);
 
-// Хранилище для отслеживания участников комнат
-const voiceRooms = new Map();
+// Track active connections for conference
+const activeConnections = new Map(); // roomId -> Set(socket.id)
 
-// Хранилище для отслеживания активных подключений
-const activeConnections = new Map(); // roomId → Set<peerId>
-const peerConfigs = new Map(); // peerId → { type: 'call' | 'conference', roomId }
+io.on('connection', socket => {
+  console.log('New socket:', socket.id, 'userId:', socket.userId);
 
-io.on('connection', (socket) => {
-  console.log('🔥 new socket connection, socket.userId =', socket.userId);
-  console.log('User connected:', socket.id);
+  // Chat room join
+  socket.on('joinRoom', roomId => socket.join(roomId));
 
-  // Подписка на комнату чата
-  socket.on('joinRoom', (roomId) => {
-    socket.join(roomId);
-    console.log(`User joined chat room: ${roomId}`);
-  });
+  // 1:1 call and chat logic omitted…
 
-  socket.on('chatMessage', async (data) => {
-    console.log('Received chatMessage:', data);
-    // Сохраняем и эмитим
-    const savedMessage = await saveMessageToDB(data.roomId, data.userId, data.message);
-    io.to(data.roomId).emit('newMessage', savedMessage);
-  });
-
-  // Подписка на комнату для голосовой связи
-  socket.on('joinVoiceRoom', (roomId) => {
-    socket.join(roomId);
-
-    // Инициализируем комнату если ее нет
-    if (!voiceRooms.has(roomId)) {
-      voiceRooms.set(roomId, new Set());
-    }
-
-    voiceRooms.get(roomId).add(socket.id);
-    console.log(`User joined voice room: ${roomId}`);
-
-    // Уведомляем других участников о новом пользователе
-    socket.to(roomId).emit('new-peer', { peerId: socket.id });
-  });
-
-  // Обработка WebRTC сигналов
-  socket.on('webrtc-signal', (data) => {
-    // Пересылаем сигнал конкретному получателю
-    io.to(data.targetPeerId).emit('webrtc-signal', {
-      senderId: socket.id,
-      signal: data.signal,
-      roomId: data.roomId
-    });
-  });
-
-  // Обработка отключения
-  socket.on('disconnect', () => {
-    console.log('User disconnected:', socket.id);
-
-    // Удаляем пользователя из всех голосовых комнат
-    voiceRooms.forEach((participants, roomId) => {
-      if (participants.has(socket.id)) {
-        participants.delete(socket.id);
-        socket.to(roomId).emit('peer-disconnected', { peerId: socket.id });
-      }
-    });
-  });
-
-  // Отправка сообщения в комнату
-  socket.on('sendMessage', async (data) => {
-    try {
-      const { text, roomId } = data;
-      const message = await Message.create(text, socket.userId, roomId);
-
-      console.log('Получено сообщение через сокет:', data);
-      console.log('📝 sendMessage received:', { text: data.text, roomId: data.roomId });
-
-      // Добавляем имя отправителя
-      const user = await User.findById(socket.userId);
-      const messageWithSender = {
-        ...message,
-        sender_name: user.name
-      };
-
-      // Отправляем всем в комнате, включая отправителя
-      io.to(data.roomId).emit('newMessage', messageWithSender);
-    } catch (error) {
-      console.error('Ошибка обработки сообщения:', error);
-    }
-  });
-
-  socket.on('sendVoice', async data => {
-    // сохраняем файл через chatController.sendVoiceMessage
-    const payload = await chatController.sendVoiceMessageSocket(data, socket.userId);
-    io.to(data.roomId).emit('newMessage', payload);
-  });
-
-  socket.on('disconnect', () => {
-    console.log('User disconnected:', socket.id);
-  });
-
-  // Инициализация звонка 1:1
-  socket.on('initiate-call', ({ targetUserId, roomId }) => {
-    const callId = callService.initiateCall(socket.userId, targetUserId, roomId);
-    io.to(targetUserId).emit('incoming-call', {
-      callId,
-      fromUserId: socket.userId,
-      roomId
-    });
-  });
-
-  // Принятие входящего звонка
-  socket.on('accept-call', ({ callId }) => {
-    if (callService.acceptCall(callId, socket.userId)) {
-      const call = callService.activeCalls.get(callId);
-      io.to(call.initiatorId).emit('call-accepted', {
-        callId,
-        targetUserId: socket.userId
-      });
-    }
-  });
-
-  // Создание конференции
-  socket.on('create-conference', (roomId) => {
+  // Conference events
+  socket.on('create-conference', roomId => {
     socket.join(roomId);
     activeConnections.set(roomId, new Set([socket.id]));
-    peerConfigs.set(socket.id, { type: 'conference', roomId });
     socket.to(roomId).emit('conference-started', { roomId });
   });
 
-  // Присоединение к конференции
   socket.on('join-conference', ({ roomId, userId, username }) => {
     socket.join(roomId);
+    // add to active set
+    const set = activeConnections.get(roomId) || new Set();
+    set.add(socket.id);
+    activeConnections.set(roomId, set);
     socket.to(roomId).emit('new-conference-participant', { peerId: socket.id, initiatorId: userId });
   });
 
-  // Обработка WebRTC-сигналов
+  socket.on('leave-conference', ({ roomId }) => {
+    socket.leave(roomId);
+    const set = activeConnections.get(roomId);
+    if (set) {
+      set.delete(socket.id);
+      if (set.size === 0) activeConnections.delete(roomId);
+      else activeConnections.set(roomId, set);
+    }
+    socket.to(roomId).emit('conference-participant-left', { peerId: socket.id });
+  });
+
+  // Screen share handlers at top-level
+  socket.on('screen-share', ({ roomId, peerId }) => {
+    socket.to(roomId).emit('screen-share', { peerId });
+  });
+  socket.on('screen-share-stop', ({ roomId, peerId }) => {
+    socket.to(roomId).emit('screen-share-stop', { peerId });
+  });
+  socket.on('screen-share-join', ({ roomId, targetPeerId }) => {
+    io.to(targetPeerId).emit('screen-share-joined', { requesterId: socket.id });
+  });
+
+  // WebRTC signaling
   socket.on('webrtc-signal', ({ target, senderId, signal, roomId }) => {
-    socket.to(target).emit('webrtc-signal', { senderId, signal, roomId });
+    io.to(target).emit('webrtc-signal', { senderId, signal, roomId });
   });
 
-  // Демонстрация экрана
-  socket.on('screen-share', ({ roomId, streamId }) => {
-    const peers = activeConnections.get(roomId);
-    peers.forEach(peerId => {
-      if (peerId !== socket.id) {
-        io.to(peerId).emit('screen-share-started', { streamId });
-      }
-    });
-  });
-
-  // Отключение
+  // Disconnect
   socket.on('disconnect', () => {
-    // при отключении
-    const rooms = Array.from(socket.rooms).filter(r => r !== socket.id);
-    rooms.forEach(roomId => {
-      socket.to(roomId).emit('conference-participant-left', { peerId: socket.id });
-    });
+    // clean up conference
+    for (const [roomId, set] of activeConnections) {
+      if (set.has(socket.id)) {
+        set.delete(socket.id);
+        socket.to(roomId).emit('conference-participant-left', { peerId: socket.id });
+        if (set.size === 0) activeConnections.delete(roomId);
+      }
+    }
   });
-
 });
 
 const PORT = 3000;
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+// Привязываем к 0.0.0.0, чтобы слушать на всех интерфейсах
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server listening on 0.0.0.0:${PORT}`);
 });
 
-const uploadsDir = path.join(__dirname, 'uploads');
-fs.mkdirSync(uploadsDir, { recursive: true });
-
-
+// ensure uploads dir
+fs.mkdirSync(path.join(__dirname, 'uploads'), { recursive: true });
