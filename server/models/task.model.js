@@ -1,4 +1,5 @@
 // server/models/task.model.js
+const db = require('../config/db');   // ← импорт пула
 
 class Task {
   static async create({ title, description, deadline, creatorId, assigneeIds }) {

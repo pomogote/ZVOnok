@@ -9,6 +9,7 @@ const path = require('path');
 const chatController = require('./controllers/chat.controller');
 const callService = require('./services/call.service');
 const messageRoutes = require('./routes/message.routes');
+const usersRouter = require('./routes/user.routes');
 
 pool.query('SELECT NOW()', (err) => {
   if (err) console.error('PostgreSQL connection error:', err);

@@ -1,23 +1,38 @@
 // server/controllers/task.controller.js
 import Task from '../models/task.model.js';
 
-export const createTask = async (req, res) => {
-  const { title, description, deadline, assigneeIds } = req.body;
-  const creatorId = req.user.id;
-  const task = await Task.create({ title, description, deadline, creatorId, assigneeIds });
-  res.status(201).json(task);
+exports.createTask = async (req, res) => {
+  try {
+    const { title, description, deadline, assigneeIds } = req.body;
+    const creatorId = req.userId;        // или req.user.id, как вы устанавливали в auth
+    const task = await Task.create({ title, description, deadline, creatorId, assigneeIds });
+    res.status(201).json(task);
+  } catch (err) {
+    console.error('Ошибка при создании задачи', err);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
 };
 
-export const getTasks = async (req, res) => {
-  const tasks = await Task.findAll(/* можно фильтровать по creatorId или по assigneeIds */);
-  res.json(tasks);
+exports.getTasks = async (req, res) => {
+  try {
+    const tasks = await Task.findAll();
+    res.json(tasks);
+  } catch (err) {
+    console.error('Ошибка при получении задач', err);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
 };
 
-export const updateTask = async (req, res) => {
-  const { taskId } = req.params;
-  const { status } = req.body;
-  const task = await Task.updateStatus(taskId, status);
-  res.json(task);
+exports.updateTask = async (req, res) => {
+  try {
+    const { taskId } = req.params;
+    const { status } = req.body;
+    const task = await Task.updateStatus(taskId, status);
+    res.json(task);
+  } catch (err) {
+    console.error('Ошибка при обновлении задачи', err);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
 };
 
 

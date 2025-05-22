@@ -1,9 +1,9 @@
-import express from 'express';
-import { getAllUsers } from '../controllers/user.controller.js';
-import authMiddleware from '../middleware/auth.js';
+// server/routes/user.routes.js
+const express = require('express');
+const { getAllUsers } = require('../controllers/user.controller');
+const authMiddleware = require('../middleware/auth');
 
 const router = express.Router();
+router.get('/', authMiddleware, getAllUsers);  // GET /api/users
 
-router.get('/', authMiddleware, getAllUsers); // GET /api/users
-
-export default router;
+module.exports = router;
