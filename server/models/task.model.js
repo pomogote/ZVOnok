@@ -1,5 +1,5 @@
 // server/models/task.model.js
-const db = require('../config/db');   // ← импорт пула
+const db = require('../config/db');
 
 class Task {
   static async create({ title, description, deadline, creatorId, assigneeIds }) {
@@ -9,17 +9,15 @@ class Task {
       [title, description, deadline, creatorId]
     );
 
-    // Привязываем исполнителей
     if (Array.isArray(assigneeIds) && assigneeIds.length) {
       const vals = assigneeIds.map((_, i) => `($1, $${i + 2})`).join(',');
-      const params = [task.id, ...assigneeIds];
+      const params = [task.id, ...assigneeIds];  
       await db.query(
         `INSERT INTO task_assignees(task_id, user_id) VALUES ${vals}`,
         params
       );
     }
 
-    // Получим сессионный объект с исполнителями
     return this.findById(task.id);
   }
 

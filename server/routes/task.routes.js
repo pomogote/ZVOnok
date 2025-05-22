@@ -1,10 +1,19 @@
 const express = require('express');
-const router = express.Router();
-const taskController = require('../controllers/task.controller');
-const authMiddleware = require('../middleware/auth');
+// вытащим нужные функции из контроллера
+const {
+    getTasks,
+    createTask,
+    updateTask
+} = require('../controllers/task.controller');
 
-router.post('/', authMiddleware, taskController.createTask);
-router.get('/', authMiddleware, taskController.getTasks);
-router.patch('/:taskId', authMiddleware, taskController.updateTask);
+// приведём middleware к тому названию, которое будем использовать
+const auth = require('../middleware/auth');
+
+const router = express.Router();
+
+// теперь всё совпадает
+router.get('/', auth, getTasks);
+router.post('/', auth, createTask);
+router.patch('/:taskId', auth, updateTask);
 
 module.exports = router;
