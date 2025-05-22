@@ -41,6 +41,12 @@ CREATE TABLE tasks (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE task_assignees (
+  task_id    INTEGER REFERENCES tasks(id) ON DELETE CASCADE,
+  user_id    INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  PRIMARY KEY (task_id, user_id)
+);
+
 -- Индексы для ускорения поиска
 CREATE INDEX idx_messages_room ON messages(room_id);
 CREATE INDEX idx_tasks_assignee ON tasks(assignee_id);

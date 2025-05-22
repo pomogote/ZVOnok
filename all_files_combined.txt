@@ -1,0 +1,2516 @@
+===== .gitignore =====
+server/package-lock.json
+client/package-lock.json
+node_modules/
+uploads/
+package-lock.json
+
+
+===== client/.env =====
+PORT=3001
+HOST=0.0.0.0
+#REACT_APP_API_URL=http://localhost:3000
+#REACT_APP_API_URL=http://188.232.170.223:3000
+REACT_APP_API_URL=http://192.168.0.104:3000
+
+
+===== client/package.json =====
+{
+  "name": "client",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject"
+  },
+  "dependencies": {
+    "axios": "^1.6.2",
+    "buffer": "^6.0.3",
+    "crypto-browserify": "^3.12.1",
+    "process": "^0.11.10",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-icons": "^5.5.0",
+    "react-router-dom": "^7.6.0",
+    "react-scripts": "5.0.1",
+    "sass": "^1.89.0",
+    "simple-peer": "^9.11.1",
+    "socket.io-client": "^4.7.1",
+    "stream-browserify": "^3.0.0",
+    "window": "^4.2.7"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}
+
+
+===== client/public/index.html =====
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Chat Client</title>
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
+
+
+===== client/src/App.js =====
+import React, { useState, useEffect, useRef } from 'react';
+import Login from './Login';
+import Register from './Register';
+import ChatRoom from './ChatRoom';
+import TaskManager from './TaskManager';
+import { fetchRooms, createRoom, deleteRoom } from './api';
+import createSocket from './socket';
+
+export default function App() {
+  const [token, setToken] = useState('');
+  const [userId, setUserId] = useState('');
+  const [username, setUsername] = useState('');
+  const [showRegister, setShowRegister] = useState(false);
+  const [rooms, setRooms] = useState([]);
+  const [currentRoom, setCurrentRoom] = useState(null);
+  const [newRoomName, setNewRoomName] = useState(''); // Для создания новых комнат
+  const [showTasks, setShowTasks] = useState(false);
+  const socketRef = useRef(null);
+
+  useEffect(() => {
+    if (token) {
+      socketRef.current = createSocket(token);
+      socketRef.current.on('room-created', room => setRooms(prev => [...prev, room]));
+      socketRef.current.on('room-deleted', ({ roomId }) =>
+        setRooms(prev => prev.filter(r => r.id !== roomId))
+      );
+      fetchRooms(token).then(setRooms);
+      return () => socketRef.current.disconnect();
+    }
+  }, [token]);
+
+  const handleCreateRoom = async () => {
+    if (!newRoomName.trim()) return;
+    try {
+      await createRoom(newRoomName, token);
+      setNewRoomName('');
+    } catch {
+      alert('Не удалось создать комнату');
+    }
+  };
+
+  const handleDeleteRoom = async roomId => {
+    if (!window.confirm('Вы уверены, что хотите удалить комнату?')) return;
+    try {
+      await deleteRoom(roomId, token);
+      setRooms(prev => prev.filter(r => r.id !== roomId));
+      if (currentRoom?.id === roomId) setCurrentRoom(null);
+    } catch {
+      alert('Не удалось удалить комнату');
+    }
+  };
+
+  if (!token) {
+    return (
+      <div style={{ padding: 20, maxWidth: 400, margin: '0 auto' }}>
+        {showRegister ? (
+          <Register onRegistered={() => setShowRegister(false)} />
+        ) : (
+          <Login
+            onLogin={(tok, uid, uname) => {
+              setToken(tok);
+              setUserId(uid);
+              setUsername(uname);
+            }}
+          />
+        )}
+        <div style={{ marginTop: 10, textAlign: 'center' }}>
+          <button
+            onClick={() => setShowRegister(!showRegister)}
+            style={{ background: 'none', border: 'none', color: '#06c', cursor: 'pointer' }}
+          >
+            {showRegister ? 'Уже есть аккаунт? Войти' : 'Нет аккаунта? Зарегистрироваться'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Рендер таск-менеджера
+  if (showTasks) {
+    return (
+      <div style={{ padding: '20px', maxWidth: '600px', margin: '0 auto' }}>
+        <button
+          onClick={() => setShowTasks(false)}
+          style={{ marginBottom: '10px' }}
+        >
+          ← Назад к чатам
+        </button>
+        <TaskManager token={token} />
+      </div>
+    );
+  }
+
+  // Список комнат
+  if (!currentRoom) {
+    return (
+      <div style={{ padding: '20px', maxWidth: '600px', margin: '0 auto' }}>
+        <button
+          onClick={() => setShowTasks(true)}
+          style={{
+            display: 'block',
+            marginBottom: '20px',
+            background: '#06c',
+            color: 'white',
+            padding: '8px 12px',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer'
+          }}
+        >
+          Открыть таск-менеджер
+        </button>
+        <h2>Чаты</h2>
+        <div style={{ marginBottom: '20px' }}>
+          <input
+            value={newRoomName}
+            onChange={e => setNewRoomName(e.target.value)}
+            placeholder="Название новой комнаты"
+            style={{ marginRight: '10px', padding: '5px' }}
+          />
+          <button onClick={handleCreateRoom}>Создать комнату</button>
+        </div>
+        <ul style={{ listStyle: 'none', padding: 0 }}>
+          {rooms.map(room => (
+            <li
+              key={room.id}
+              style={{
+                margin: '10px 0',
+                padding: '10px',
+                border: '1px solid #ddd',
+                borderRadius: '5px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}
+            >
+              <button
+                onClick={() => setCurrentRoom(room)}
+                style={{ flexGrow: 1, textAlign: 'left' }}
+              >
+                {room.name}
+              </button>
+              {room.creator_id === userId && (
+                <button
+                  onClick={() => handleDeleteRoom(room.id)}
+                  style={{
+                    background: 'red',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '50%',
+                    width: '24px',
+                    height: '24px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  ×
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+        <button
+          onClick={() => {
+            setToken('');
+            setUserId('');
+            setUsername('');
+          }}
+          style={{ marginTop: '20px' }}
+        >
+          Выйти
+        </button>
+      </div>
+    );
+  }
+
+  // Комната чата
+  return (
+    <ChatRoom
+      token={token}
+      userId={userId}
+      username={username}
+      room={currentRoom}
+      onLeave={() => setCurrentRoom(null)}
+    />
+  );
+}
+
+
+===== client/src/Call.js =====
+import React, { useEffect, useRef, useState } from 'react';
+import Peer from 'simple-peer';
+
+export default function Call({ socket, token, userId, username, roomId, peerUser, onEnd }) {
+  const [stream, setStream] = useState(null);
+  const [peer, setPeer] = useState(null);
+  const myVideo = useRef(null);
+  const userVideo = useRef(null);
+
+  useEffect(() => {
+    // Проверка поддержки медиаустройств
+    if (!navigator.mediaDevices?.getUserMedia) {
+      alert('Браузер не поддерживает доступ к медиаустройствам');
+      return;
+    }
+
+    let currentPeer = null;
+    let currentStream = null;
+
+    const initializeCall = async () => {
+      try {
+        // Получаем медиапоток
+        currentStream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true
+        });
+
+        setStream(currentStream);
+        myVideo.current.srcObject = currentStream;
+
+        // Инициализация Peer соединения
+        const isInitiator = !peerUser.incoming;
+        currentPeer = new Peer({
+          initiator: isInitiator,
+          trickle: false,
+          stream: currentStream
+        });
+
+        // Обработка сигналов WebRTC
+        currentPeer.on('signal', data => {
+          socket.emit('webrtc-signal', {
+            roomId,
+            toUserId: peerUser.id,
+            fromUserId: userId,
+            signal: data
+          });
+        });
+
+        currentPeer.on('stream', userStream => {
+          userVideo.current.srcObject = userStream;
+        });
+
+        // Обработка входящих сигналов
+        const signalHandler = ({ signal }) => currentPeer.signal(signal);
+        socket.on('webrtc-signal', signalHandler);
+
+        // Инициируем/принимаем звонок
+        if (isInitiator) {
+          socket.emit('initiate-call', {
+            targetUserId: peerUser.id,
+            roomId,
+            fromUserName: username
+          });
+        } else {
+          socket.emit('accept-call', {
+            callId: peerUser.callId,
+            fromUserId: userId,
+            roomId
+          });
+        }
+
+        setPeer(currentPeer);
+
+      } catch (error) {
+        console.error('Ошибка инициализации звонка:', error);
+        handleMediaError(error);
+      }
+    };
+
+    const handleMediaError = (error) => {
+      let errorMessage = 'Ошибка доступа к устройствам:';
+      
+      if (error.name === 'NotFoundError') {
+        errorMessage += '\n- Устройства не найдены';
+      } else if (error.name === 'NotAllowedError') {
+        errorMessage += '\n- Доступ запрещен';
+      } else {
+        errorMessage += '\n- Неизвестная ошибка';
+      }
+
+      alert(`${errorMessage}\nПроверьте:\n1. Разрешения браузера\n2. Подключенные устройства\n3. HTTPS соединение`);
+      onEnd();
+    };
+
+    initializeCall();
+
+    // Очистка при размонтировании
+    return () => {
+      if (currentPeer) {
+        currentPeer.destroy();
+        socket.off('webrtc-signal');
+      }
+      if (currentStream) {
+        currentStream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []); // Пустой массив зависимостей - монтируется один раз
+
+  return (
+    <div style={{ border: '2px solid blue', padding: 10, margin: 10 }}>
+      <h3>Звонок с {peerUser.name}</h3>
+      <div style={{ display: 'flex', gap: 10 }}>
+        <video ref={myVideo} autoPlay muted playsInline style={{ width: 150 }} />
+        <video ref={userVideo} autoPlay playsInline style={{ width: 150 }} />
+      </div>
+      <button onClick={onEnd}>Завершить звонок</button>
+    </div>
+  );
+}
+
+
+===== client/src/ChatRoom.js =====
+import React, { useEffect, useState, useRef } from 'react';
+import { fetchMessages, updateMessage, deleteMessage } from './api';
+import createSocket from './socket';
+import Call from './Call';
+import VoiceRecorder from './VoiceRecorder';
+import ConferenceCall from './ConferenceCall';
+
+const API_URL = process.env.REACT_APP_API_URL;
+
+export default function ChatRoom({ token, userId, username, room, onLeave }) {
+    const [messages, setMessages] = useState([]);
+    const [text, setText] = useState('');
+    const [callUser, setCallUser] = useState(null);
+    const [conference, setConference] = useState(false);
+    const socketRef = useRef();
+    const [inConference, setInConference] = useState(false);
+    const [confRunning, setConfRunning] = useState(false);
+
+    useEffect(() => {
+        // 1) Инициализация сокета
+        socketRef.current = createSocket(token);
+        // 2) Входим в комнату
+        socketRef.current.emit('joinRoom', room.id);
+
+        // 3) Подписки на события
+        socketRef.current.on('newMessage', msg => {
+            setMessages(prev =>
+                prev.some(m => m.id === msg.id) ? prev : [...prev, msg]
+            );
+        });
+        socketRef.current.on('message-updated', ({ messageId, text }) => {
+            setMessages(prev =>
+                prev.map(m => (m.id === messageId ? { ...m, text } : m))
+            );
+        });
+        socketRef.current.on('message-deleted', ({ messageId }) => {
+            setMessages(prev => prev.filter(m => m.id !== messageId));
+        });
+        socketRef.current.on('incoming-call', ({ fromUserId, fromUserName }) => {
+            if (window.confirm(`Входящий звонок от ${fromUserName}. Принять?`)) {
+                setCallUser({ id: fromUserId, name: fromUserName, incoming: true });
+            }
+        });
+        socketRef.current.on('new-conference-participant', () => {
+            setConfRunning(true);
+        });
+        socketRef.current.on('conference-participant-left', () => {
+            // Когда кто-то вышел, считаем, что конференции нет, если вы в ней не остались
+            // (в простейшей реализации)
+            setConfRunning(false);
+        });
+        // 4) Загрузка истории
+        fetchMessages(room.id, token).then(setMessages);
+
+        return () => {
+            // снятие всех подписок и дисконнект
+            socketRef.current.off('newMessage');
+            socketRef.current.off('message-updated');
+            socketRef.current.off('message-deleted');
+            socketRef.current.off('incoming-call');
+            socketRef.current.disconnect();
+        };
+    }, [room.id, token]);
+
+    const sendMessage = () => {
+        if (!text.trim()) return;
+        socketRef.current.emit('sendMessage', { text, roomId: room.id });
+        setText('');
+    };
+
+    const startCall = (targetUserId, targetUserName) => {
+        setCallUser({ id: targetUserId, name: targetUserName, incoming: false });
+    };
+
+
+    const handleConferenceToggle = () => {
+        if (!inConference) {
+            // присоединяемся
+            setInConference(true);
+            setConfRunning(true);
+            setConference(true);
+            socketRef.current.emit('join-conference', { roomId: room.id });
+        } else {
+            // выходим
+            setInConference(false);
+            setConference(false);
+            socketRef.current.emit('leave-conference', { roomId: room.id });
+        }
+    };
+
+    // обработчик редактирования:
+    const onEditClick = async (message) => {
+        const newText = prompt('Новый текст сообщения:', message.text);
+        if (newText != null && newText !== message.text) {
+            try {
+                await updateMessage(token, message.id, newText);
+                // локально ничего не делаем — ждём socket 'message-updated'
+            } catch (error) {
+                console.error('Ошибка обновления:', error.response?.data?.error || error.message);
+            }
+        }
+    };
+
+    const onDeleteClick = async (messageId) => {
+        if (window.confirm('Удалить сообщение?')) {
+            try {
+                await deleteMessage(token, messageId);
+                // локально ничего не делаем — ждём socket 'message-deleted'
+            } catch (error) {
+                console.error('Ошибка удаления:', error.response?.data?.error || error.message);
+            }
+        }
+    };
+
+    return (
+        <div>
+            <h2>Комната: {room.name}</h2>
+            <button onClick={onLeave}>Выйти из комнаты</button>
+            <button
+                onClick={handleConferenceToggle}
+                style={{ marginLeft: 10 }}
+            >
+                {!inConference
+                    ? (confRunning ? 'Присоединиться к конференции' : 'Начать конференцию')
+                    : 'Выйти из конференции'}
+            </button>
+
+            <div style={{ height: 300, overflowY: 'auto', border: '1px solid #ccc', margin: '10px 0' }}>
+                {messages.map(msg => {
+                    // имя автора: отдаёт при live-сообщении или из истории
+                    const author = msg.sender_name || msg.user_name || 'Unknown';
+                    const authorId = msg.user_id || msg.sender_id;
+                    const isMine = String(authorId) === String(userId);
+
+                    return (
+                        <div key={msg.id} style={{ position: 'relative', marginBottom: 10 }}>
+                            {isMine && (
+                                <button
+                                    onClick={() => onDeleteClick(msg.id)}
+                                    style={{
+                                        position: 'absolute',
+                                        right: 0,
+                                        top: 0,
+                                        background: '#ff4444',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        padding: '2px 6px',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    Удалить
+                                </button>
+                            )}
+
+                            <b>{author}:</b>{' '}
+                            {msg.is_voice_message
+                                ? <audio controls src={`${API_URL}${msg.file_url}`} />
+                                : msg.text
+                            }
+
+                            {/* Редактировать — только текстовые */}
+                            {isMine && !msg.is_voice_message && (
+                                <button
+                                    onClick={() => onEditClick(msg)}
+                                    style={{
+                                        marginLeft: 10,
+                                        background: '#4CAF50',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        padding: '2px 6px',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    Редакт.
+                                </button>
+                            )}
+
+                            {/* Звонок другим */}
+                            {!isMine && (
+                                <button
+                                    style={{ marginLeft: 10 }}
+                                    onClick={() => setCallUser({ id: msg.user_id, name: author, incoming: false })}
+                                >
+                                    Позвонить
+                                </button>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
+
+            <input
+                value={text}
+                onChange={e => setText(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && sendMessage()}
+                placeholder="Введите сообщение"
+            />
+            <button onClick={sendMessage}>Отправить</button>
+
+            <VoiceRecorder
+                roomId={room.id}
+                token={token}
+                onSend={msg => setMessages(prev => [...prev, msg])}
+            />
+
+            {callUser && (
+                <Call
+                    socket={socketRef.current}
+                    token={token}
+                    userId={userId}
+                    username={username}
+                    roomId={room.id}
+                    peerUser={callUser}
+                    onEnd={() => setCallUser(null)}
+                />
+            )}
+            {conference && (
+                <ConferenceCall
+                    socket={socketRef.current}
+                    token={token}
+                    userId={userId}
+                    username={username}
+                    roomId={room.id}
+                    onEnd={() => setConference(false)}
+                />
+            )}
+        </div>
+    );
+}
+
+
+===== client/src/ConferenceCall.js =====
+import React, { useEffect, useRef, useState } from 'react';
+import Peer from 'simple-peer';
+import './css/ConferenceCall.css';
+
+export default function ConferenceCall({ socket, userId, username = 'User', roomId, onEnd }) {
+    const [stream, setStream] = useState(null);
+    const [peers, setPeers] = useState([]);
+    const [error, setError] = useState('');
+    const peersRef = useRef([]);
+    const myVideo = useRef(null);
+
+    // Screen sharing states
+    const [screenSharing, setScreenSharing] = useState(false);
+    const [screenTrack, setScreenTrack] = useState(null);
+    const [cameraTrack, setCameraTrack] = useState(null);
+    const [screenSharingByPeer, setScreenSharingByPeer] = useState({});
+
+    useEffect(() => {
+        const init = async () => {
+            try {
+                const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => null);
+                const videoStream = await navigator.mediaDevices.getUserMedia({ video: true }).catch(() => null);
+                const combined = new MediaStream([
+                    ...(audioStream?.getTracks() || []),
+                    ...(videoStream?.getTracks() || [])
+                ]);
+                setStream(combined);
+                if (videoStream && videoStream.getVideoTracks().length) {
+                    setCameraTrack(videoStream.getVideoTracks()[0]);
+                }
+                if (myVideo.current) myVideo.current.srcObject = combined;
+                socket.emit('join-conference', { roomId, peerId: socket.id });
+            } catch (err) {
+                setError(`Initialization error: ${err.message}`);
+            }
+        };
+        init();
+
+        console.log("🔌 Socket connected, id=", socket.id);
+
+        socket.on('new-conference-participant', ({ peerId }) => {
+            if (peerId === socket.id) return;
+            if (peersRef.current.some(p => p.peerId === peerId)) return;
+            const peer = new Peer({ initiator: true, trickle: false, stream });
+            peer.on('signal', signal => {
+                socket.emit('webrtc-signal', { target: peerId, senderId: socket.id, signal, roomId });
+            });
+            peer.on('error', e => console.error('Peer error:', e));
+            peersRef.current.push({ peerId, peer });
+            setPeers(prev => [...prev, { peerId, peer }]);
+        });
+
+        socket.on('webrtc-signal', ({ senderId, signal }) => {
+            if (senderId === socket.id) return;
+            const existing = peersRef.current.find(p => p.peerId === senderId);
+            if (existing) {
+                existing.peer.signal(signal);
+            } else {
+                const peer = new Peer({ initiator: false, trickle: false, stream });
+                peer.on('signal', sig => {
+                    socket.emit('webrtc-signal', { target: senderId, senderId: socket.id, signal: sig, roomId });
+                });
+                peer.on('error', e => console.error('Peer error:', e));
+                peer.signal(signal);
+                peersRef.current.push({ peerId: senderId, peer });
+                setPeers(prev => [...prev, { peerId: senderId, peer }]);
+            }
+        });
+
+        socket.on('conference-participant-left', ({ peerId }) => {
+            peersRef.current = peersRef.current.filter(p => p.peerId !== peerId);
+            setPeers(prev => prev.filter(p => p.peerId !== peerId));
+            setScreenSharingByPeer(prev => {
+                const next = { ...prev };
+                delete next[peerId];
+                return next;
+            });
+        });
+
+        // Screen share
+        socket.on('screen-share', ({ peerId }) => {
+            console.log("📡 Клиент B получил screen-share от", peerId);
+            setScreenSharingByPeer(prev => ({ ...prev, [peerId]: true }));
+        });
+        socket.on('screen-share-stop', ({ peerId }) => {
+            console.log("📴 Клиент B получил screen-share-stop от", peerId);
+            setScreenSharingByPeer(prev => {
+                const next = { ...prev };
+                delete next[peerId];
+                return next;
+            });
+        });
+        socket.on('screen-share-joined', ({ requesterId }) => {
+            console.log("👀 Клиент A получил screen-share-joined от", requesterId);
+            const peerObj = peersRef.current.find(p => p.peerId === requesterId);
+            if (peerObj && screenTrack && cameraTrack && !peerObj.peer.destroyed) {
+                try {
+                    peerObj.peer.replaceTrack(cameraTrack, screenTrack, stream);
+                } catch (e) {
+                    console.error('Failed replaceTrack on join:', e);
+                }
+            }
+        });
+
+        return () => {
+            socket.off('new-conference-participant');
+            socket.off('webrtc-signal');
+            socket.off('conference-participant-left');
+            socket.off('screen-share');
+            socket.off('screen-share-stop');
+            socket.off('screen-share-joined');
+            stream?.getTracks().forEach(t => t.stop());
+            peersRef.current.forEach(p => p.peer.destroy());
+        };
+    }, [socket, stream, screenTrack, cameraTrack]);
+
+    const toggleMedia = type => {
+        const tracks = stream?.getTracks().filter(t => t.kind === type);
+        if (!tracks?.length) return;
+        tracks.forEach(t => (t.enabled = !t.enabled));
+        setStream(new MediaStream(stream.getTracks()));
+    };
+
+    const toggleScreenShare = async () => {
+        if (!screenSharing) {
+            try {
+                const display = await navigator.mediaDevices.getDisplayMedia({ video: true });
+                const [track] = display.getVideoTracks();
+                setScreenTrack(track);
+                setScreenSharing(true);
+                peersRef.current.forEach(({ peer }) => {
+                    if (!peer.destroyed) peer.replaceTrack(cameraTrack, track, stream);
+                });
+                socket.emit('screen-share', { roomId, peerId: socket.id });
+            } catch (err) {
+                console.error('Screen share error:', err);
+            }
+        } else {
+            if (screenTrack) screenTrack.stop();
+            setScreenSharing(false);
+            peersRef.current.forEach(({ peer }) => {
+                if (!peer.destroyed) peer.replaceTrack(screenTrack, cameraTrack, stream);
+            });
+            socket.emit('screen-share-stop', { roomId, peerId: socket.id });
+        }
+    };
+
+    return (
+        <div className="conference-container">
+            <h3 className="conference-title">Конференция: {roomId}</h3>
+            {error && <div className="error-message">{error}</div>}
+            <div className="video-grid">
+                {stream && stream.getVideoTracks().length > 0 ? (
+                    <video ref={myVideo} autoPlay muted playsInline className="self-video" />
+                ) : (
+                    <div className="user-avatar"><span>{username[0].toUpperCase()}</span></div>
+                )}
+                {peers.map(({ peerId, peer }) => (
+                    <div key={peerId} style={{ position: 'relative' }}>
+                        <Video peer={peer} />
+                        {screenSharingByPeer[peerId] && (
+                            <button
+                                className="screen-join-btn"
+                                onClick={() => socket.emit('screen-share-join', { roomId, targetPeerId: peerId })}
+                            >Смотреть экран</button>
+                        )}
+                    </div>
+                ))}
+            </div>
+            <div className="controls">
+                <button onClick={() => toggleMedia('audio')} className={`control-button ${stream?.getAudioTracks().length ? 'active' : ''}`}>🔊</button>
+                <button onClick={() => toggleMedia('video')} className={`control-button ${stream?.getVideoTracks().length ? 'active' : ''}`}>📷</button>
+                <button
+                    onClick={toggleScreenShare}
+                    className="control-button"
+                    title={screenSharing ? 'Остановить демонстрацию экрана' : 'Демонстрация экрана'}
+                >📺</button>
+                <button onClick={onEnd} className="end-button">Завершить</button>
+            </div>
+        </div>
+    );
+}
+
+function Video({ peer }) {
+    const ref = useRef();
+    useEffect(() => {
+        const handleStream = stream => {
+            console.log('📺 got remote stream for peer', peer);
+            ref.current.srcObject = stream;
+        };
+        peer.on('stream', handleStream);
+        return () => peer.off('stream', handleStream);
+    }, [peer]);
+    return <video ref={ref} autoPlay playsInline className="peer-video" />;
+}
+
+
+===== client/src/Login.js =====
+import React, { useState } from 'react';
+import { login } from './api';
+
+export default function Login({ onLogin }) {
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState('');
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        try {
+            const data = await login(email, password);
+            onLogin(data.token, data.user.id, data.user.username);
+        } catch (err) {
+            setError('Неверный логин или пароль');
+        }
+    };
+
+    return (
+        <form onSubmit={handleSubmit}>
+            <h2>Вход</h2>
+            <input
+                placeholder="Email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+            />
+            <input
+                placeholder="Пароль"
+                type="password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+            />
+            <button type="submit">Войти</button>
+            {error && <div style={{ color: 'red' }}>{error}</div>}
+        </form>
+    );
+}
+
+
+===== client/src/Register.js =====
+// client/src/Register.js
+import React, { useState } from 'react';
+import { register } from './api';
+
+export default function Register({ onRegistered }) {
+  const [name, setName]       = useState('');
+  const [email, setEmail]     = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError]     = useState('');
+
+  const handleSubmit = async e => {
+    e.preventDefault();
+    try {
+      await register(name, email, password);
+      alert('Регистрация успешна! Введите данные для входа.');
+      onRegistered();  // переключаемся обратно на логин
+    } catch (err) {
+      console.error(err);
+      setError(err.response?.data?.error || 'Ошибка регистрации');
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <h2>Регистрация</h2>
+      <input placeholder="Имя"    value={name}    onChange={e => setName(e.target.value)} />
+      <input placeholder="Email"  value={email}   onChange={e => setEmail(e.target.value)} />
+      <input placeholder="Пароль" type="password"
+             value={password} onChange={e => setPassword(e.target.value)} />
+      <button type="submit">Зарегистрироваться</button>
+      {error && <div style={{ color: 'red' }}>{error}</div>}
+    </form>
+  );
+}
+
+
+===== client/src/TaskManager.js =====
+import React, { useState, useEffect } from 'react';
+import { fetchTasks, createTask, updateTask } from './api';
+
+export default function TaskManager({ token, userId }) {
+    const [tasks, setTasks] = useState([]);
+    const [title, setTitle] = useState('');
+    const [description, setDescription] = useState('');
+    const [deadline, setDeadline] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
+
+    // Универсальная функция для обработки ответа от API
+    function normalizeList(response) {
+        if (Array.isArray(response)) return response;
+        if (response && Array.isArray(response.tasks)) return response.tasks;
+        if (response && Array.isArray(response.data)) return response.data;
+        return [];
+    }
+
+    // Универсальная функция для извлечения объекта задачи
+    function normalizeItem(response) {
+        if (!response) return null;
+        if (response.task) return response.task;
+        if (response.data) return response.data;
+        return response;
+    }
+
+    // Загрузка задач
+    async function loadTasks() {
+        setLoading(true);
+        try {
+            const result = await fetchTasks(token);
+            const list = normalizeList(result);
+            setTasks(list);
+            setError(null);
+        } catch (err) {
+            console.error(err);
+            setError('Не удалось загрузить задачи');
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    useEffect(() => {
+        if (token) loadTasks();
+    }, [token]);
+
+    // Создание задачи
+    async function handleCreate(e) {
+        e.preventDefault();
+        setError(null);
+        try {
+            const payload = { title, description, deadline, assignee_id: userId };
+            const result = await createTask(payload, token);
+            const newTask = normalizeItem(result);
+            if (newTask) setTasks(prev => [newTask, ...prev]);
+            setTitle('');
+            setDescription('');
+            setDeadline('');
+        } catch (err) {
+            console.error(err);
+            setError('Ошибка при создании задачи');
+        }
+    }
+
+    // Обновление статуса задачи
+    async function handleStatus(task) {
+        const next = { todo: 'in_progress', in_progress: 'done', done: 'todo' }[task.status];
+        try {
+            const result = await updateTask(task.id, next, token);
+            const updated = normalizeItem(result);
+            if (updated)
+                setTasks(prev => prev.map(t => (t.id === updated.id ? updated : t)));
+        } catch (err) {
+            console.error(err);
+            setError('Не удалось обновить статус');
+        }
+    }
+
+    return (
+        <div className="p-4 space-y-4 max-w-lg mx-auto">
+            <button onClick={loadTasks} className="text-sm text-blue-600 hover:underline">
+                Обновить задачи
+            </button>
+
+            <form onSubmit={handleCreate} className="bg-white p-4 rounded shadow space-y-3">
+                {error && <p className="text-red-600">{error}</p>}
+                <input
+                    className="w-full border px-3 py-2 rounded"
+                    placeholder="Заголовок"
+                    value={title}
+                    onChange={e => setTitle(e.target.value)}
+                    required
+                />
+                <textarea
+                    className="w-full border px-3 py-2 rounded"
+                    placeholder="Описание"
+                    value={description}
+                    onChange={e => setDescription(e.target.value)}
+                    required
+                />
+                <input
+                    type="date"
+                    className="w-full border px-3 py-2 rounded"
+                    value={deadline}
+                    onChange={e => setDeadline(e.target.value)}
+                    required
+                />
+                <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
+                    Создать задачу
+                </button>
+            </form>
+
+            {loading && <p>Загрузка...</p>}
+            {!loading && !tasks.length && <p>Задач нет.</p>}
+
+            {!loading && tasks.length > 0 && (
+                <div className="space-y-3">
+                    {tasks.map((task, idx) =>
+                        task ? (
+                            <div
+                                key={task.id || idx}
+                                className="bg-white p-4 rounded shadow flex justify-between items-center"
+                            >
+                                <div>
+                                    <h3 className="font-semibold">{task.title}</h3>
+                                    <p className="text-sm">{task.description}</p>
+                                    <p className="text-xs text-gray-500">
+                                        Дедлайн: {new Date(task.deadline).toLocaleDateString()}
+                                    </p>
+                                    <p className="uppercase text-xs mt-1">Статус: {task.status}</p>
+                                    <p className="text-xs text-gray-600">
+                                        Назначено: {task.assignee_id === userId ? 'Вам' : task.assignee_id}
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={() => handleStatus(task)}
+                                    className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700"
+                                >
+                                    {task.status === 'done' ? 'Возврат в TODO' : 'След. статус'}
+                                </button>
+                            </div>
+                        ) : null
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
+
+===== client/src/VoiceRecorder.js =====
+// src/VoiceRecorder.js
+import React, { useState, useRef } from 'react';
+import axios from 'axios';
+
+export default function VoiceRecorder({ roomId, token, onSend }) {
+  const [recording, setRecording] = useState(false);
+  const [mediaRecorder, setMediaRecorder] = useState(null);
+  const audioChunksRef = useRef([]);
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new window.MediaRecorder(stream);
+      setMediaRecorder(recorder);
+      audioChunksRef.current = [];
+
+      recorder.ondataavailable = e => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+      recorder.onstop = async () => {
+        if (!audioChunksRef.current.length) {
+          alert("Не удалось записать аудио. Попробуйте ещё раз.");
+          return;
+        }
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const formData = new FormData();
+        formData.append('voice', blob, `recording.webm`);
+        formData.append('roomId', roomId);
+
+        const res = await axios.post(
+          `${process.env.REACT_APP_API_URL}/api/chat/voice`,
+          formData,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (res => onSend(res.data));
+        //socketRef.current.emit('sendVoice', { roomId, file: formData });
+      };
+
+      recorder.start();
+      setRecording(true);
+    } catch (err) {
+      console.error('Ошибка доступа к микрофону:', err);
+      alert('Не удалось получить доступ к микрофону.');
+    }
+  };
+
+
+  const stopRecording = () => {
+    if (mediaRecorder) {
+      mediaRecorder.stop();
+      setRecording(false);
+    }
+  };
+
+  return (
+    <div>
+      {!recording
+        ? <button onClick={startRecording}>🎤 Записать голос</button>
+        : <button onClick={stopRecording}>⏹️ Остановить</button>
+      }
+    </div>
+  );
+}
+
+
+===== client/src/api.js =====
+import axios from 'axios';
+
+const API_URL = process.env.REACT_APP_API_URL;
+
+export const login = async (email, password) => {
+    const res = await axios.post(`${API_URL}/api/auth/login`, { email, password });
+    return res.data;
+};
+// Регистрация
+export const register = async (name, email, password) => {
+    const res = await axios.post(`${API_URL}/api/auth/register`, {
+        name, email, password
+    });
+    // сервер возвращает объект пользователя, но без токена,
+    // токен придёт только после логина
+    return res.data;
+};
+
+export const fetchRooms = async (token) => {
+    const res = await axios.get(`${API_URL}/api/rooms`, {
+        headers: { Authorization: `Bearer ${token}` }
+    });
+    return res.data;
+};
+
+export const fetchMessages = async (roomId, token) => {
+    const res = await axios.get(
+        `${API_URL}/api/chat/rooms/${roomId}/messages`, // Добавлен сегмент /rooms/
+        { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return res.data;
+};
+
+export const createRoom = async (name, token) => {
+    const res = await axios.post(`${API_URL}/api/rooms`, { name }, {
+        headers: { Authorization: `Bearer ${token}` }
+    });
+    return res.data;
+};
+
+export const deleteRoom = async (roomId, token) => {
+    await axios.delete(`${API_URL}/api/rooms/${roomId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+    });
+};
+
+export const updateMessage = (token, messageId, text) => {
+    return axios.put(`${API_URL}/api/messages/${messageId}`, { text }, {
+        headers: {
+            Authorization: `Bearer ${token}`
+        }
+    });
+};
+
+export const deleteMessage = (token, messageId) => {
+    return axios.delete(`${API_URL}/api/messages/${messageId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+    });
+};
+
+export const fetchTasks = (token) => {
+    axios.get(`${API_URL}/api/tasks`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(res => res.data);
+};
+
+export const createTask = (task, token) => {
+    axios.post(`${API_URL}/api/tasks`, task, { headers: { Authorization: `Bearer ${token}` } })
+        .then(res => res.data);
+};
+
+export const updateTask = (taskId, status, token) => {
+    axios.patch(`${API_URL}/api/tasks/${taskId}`, { status }, { headers: { Authorization: `Bearer ${token}` } })
+        .then(res => res.data);
+};
+
+
+===== client/src/css/App.css =====
+.video-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+  margin: 10px;
+}
+
+.video-participant {
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  padding: 5px;
+}
+
+
+===== client/src/css/ConferenceCall.css =====
+.conference-container {
+    border: 2px solid #4CAF50;
+    border-radius: 8px;
+    padding: 20px;
+    margin: 10px;
+    background: #f8fff8;
+    max-width: 1000px;
+    margin: 20px auto;
+}
+
+.conference-title {
+    color: #2c7a2c;
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.video-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 10px;
+    margin: 20px 0;
+}
+
+.self-video, .peer-video {
+    width: 100%;
+    border-radius: 8px;
+    transform: scaleX(-1);
+    background: #000;
+    aspect-ratio: 16/9;
+}
+
+.user-avatar {
+    width: 100%;
+    aspect-ratio: 16/9;
+    background: #4CAF50;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 48px;
+    color: white;
+    text-transform: uppercase;
+}
+
+.controls {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    margin-top: 20px;
+}
+
+.control-button {
+    padding: 12px 24px;
+    border: none;
+    border-radius: 25px;
+    cursor: pointer;
+    font-size: 18px;
+    background: #e0e0e0;
+    transition: all 0.3s;
+}
+
+.control-button.active {
+    background: #4CAF50;
+    color: white;
+}
+
+.end-button {
+    padding: 12px 24px;
+    background: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 25px;
+    cursor: pointer;
+    font-size: 18px;
+    transition: opacity 0.3s;
+}
+
+.end-button:hover {
+    opacity: 0.9;
+}
+
+.error-message {
+    color: #dc3545;
+    padding: 15px;
+    margin: 15px 0;
+    border: 1px solid #dc3545;
+    border-radius: 8px;
+    background: #fff0f0;
+}
+
+.retry-button {
+    margin-top: 10px;
+    padding: 8px 16px;
+    background: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    display: block;
+}
+
+
+===== client/src/index.js =====
+import process from 'process';
+globalThis.process = {
+    env: { NODE_ENV: process.env.NODE_ENV },
+    nextTick: (cb, ...args) => setTimeout(() => cb(...args), 0),
+};
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+
+
+===== client/src/socket.js =====
+// src/socket.js
+import { io } from 'socket.io-client';
+
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000';
+
+// Экспортируем уже сконфигурированный сокет.
+// В tokenProvider() можно брать токен из LocalStorage или из любого хранилища состояния.
+// const socket = (token) => io(API_URL, {
+//   auth: { token },
+//   transports: ['websocket']
+// });
+
+// Обновим конфигурацию сокета
+const socket = (token) => io(API_URL, {
+  auth: { token },
+  transports: ['websocket'],
+  reconnection: true,
+  reconnectionAttempts: 5,
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    // Добавьте свои TURN серверы при необходимости
+  ]
+});
+
+export default socket;
+
+
+===== client/webpack.config.js =====
+const path = require('path');
+const HtmlWebpackPlugin = require('html-webpack-plugin');
+
+module.exports = {
+  // Путь к точке входа
+  entry: path.resolve(__dirname, 'src', 'index.js'),
+
+  // Выходной бандл
+  output: {
+    path: path.resolve(__dirname, 'dist'),
+    filename: 'bundle.[contenthash].js',
+    publicPath: '/',
+    clean: true, // очищает папку dist перед сборкой
+  },
+
+  // Режим: development или production
+  mode: process.env.NODE_ENV || 'development',
+
+  resolve: {
+    extensions: ['.js', '.jsx', '.json'],
+    alias: {
+      '@': path.resolve(__dirname, 'src'), // для импорта через @/
+    },
+  },
+
+  module: {
+    rules: [
+      {
+        test: /\.(js|jsx)$/,       
+        exclude: /node_modules/,    
+        use: {
+          loader: 'babel-loader',  
+          options: {
+            presets: [
+              '@babel/preset-env',
+              '@babel/preset-react'
+            ]
+          }
+        }
+      },
+      {
+        test: /\.css$/,
+        use: [
+          'style-loader',
+          {
+            loader: 'css-loader',
+            options: { importLoaders: 1 }
+          },
+          'postcss-loader' // если используете Tailwind/PostCSS
+        ]
+      },
+      {
+        test: /\.(png|jpe?g|gif|svg)$/i,
+        type: 'asset/resource'
+      }
+    ]
+  },
+
+  plugins: [
+    new HtmlWebpackPlugin({
+      template: path.resolve(__dirname, 'public', 'index.html'),
+      filename: 'index.html'
+    })
+  ],
+
+  devServer: {
+    static: {
+      directory: path.resolve(__dirname, 'public'),
+    },
+    compress: true,
+    port: 3000,
+    historyApiFallback: true,
+    hot: true,
+    open: true
+  },
+
+  devtool: 'source-map'
+};
+
+
+===== server/config/db.js =====
+const { Pool } = require('pg');
+
+const pool = new Pool({
+  user: 'postgres',
+  host: 'localhost',
+  database: 'zvonokDB',
+  password: '123',
+  port: 5432, //??
+});
+
+module.exports = pool;
+
+
+===== server/controllers/auth.controller.js =====
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const User = require('../models/user.model');
+
+exports.register = async (req, res) => {
+  try {
+    const { name, email, password } = req.body;
+
+    // Логирование входящего запроса
+    console.log(`[REGISTER] Попытка регистрации: ${email}`);
+
+    // Проверка существующего пользователя
+    const existingUser = await User.findByEmail(email);
+    if (existingUser) {
+      console.warn(`[REGISTER] Email уже занят: ${email}`);
+      return res.status(400).json({ error: "Email уже занят" });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Создание пользователя
+    const user = await User.createUser(name, email, hashedPassword);
+
+    //GOVNO
+    const token = jwt.sign({ userId: user.id }, 'your_jwt_secret', { expiresIn: '10h' });
+
+    console.log(`[REGISTER] Успешно: ID ${user.id}`);
+    console.log('[LOGIN] Generated token:', token);
+
+    res.status(201).json(user);
+  } catch (error) {
+    // Логирование ошибки с деталями
+    console.error('[REGISTER] Ошибка:', error.stack);
+    res.status(500).json({ error: "Registration failed" });
+  }
+};
+
+exports.login = async (req, res) => {
+  const { email, password } = req.body;
+  const user = await User.findByEmail(email);
+  if (!user || !(await bcrypt.compare(password, user.password_hash))) {
+    return res.status(401).json({ error: 'Invalid credentials' });
+  }
+  const token = jwt.sign({ userId: user.id }, 'your_jwt_secret', { expiresIn: '10h' }); // ВРЕМЯ СЕССИ МОЖНО ПОМЕНЯТЬ ЕС ЧО
+  res.json({
+    token,
+    user: { // Отправляем базовые данные пользователя
+      id: user.id,
+      name: user.name,
+      email: user.email
+    }
+  });
+};
+
+
+===== server/controllers/chat.controller.js =====
+const Message = require('../models/message.model');
+const Room = require("../models/room.model");
+const User = require("../models/user.model");
+const upload = require("../middleware/upload");
+const path = require('path');
+const fs = require('fs');
+let io;
+
+exports.setIO = (ioInstance) => {
+  io = ioInstance;
+};
+
+
+// Заглушка для uploadToCloud - возвращает путь к локальному файлу
+async function uploadToCloud(file) {
+  // В реальном приложении здесь будет загрузка в облако
+  // Пока просто возвращаем относительный путь для доступа
+  return file.path;
+}
+
+
+exports.sendMessage = async (req, res) => {
+  try {
+    const { text, roomId } = req.body;
+
+    // Валидация
+    if (!text?.trim()) return res.status(400).json({ error: "Пустое сообщение" });
+    if (!roomId) return res.status(400).json({ error: "Не указана комната" });
+
+    // Проверка существования комнаты
+    const roomExists = await Room.findById(roomId);
+    if (!roomExists) return res.status(404).json({ error: "Комната не найдена" });
+
+    // Создание сообщения
+    const message = await Message.create(text, req.userId, roomId);
+
+    // Получение информации об авторе
+    const user = await User.findById(req.userId);
+
+    res.status(201).json({
+      ...message,
+      sender_name: user.name
+    });
+
+  } catch (error) {
+    console.error('Ошибка:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+exports.sendVoiceMessage = async (req, res) => {
+  try {
+    const roomId = req.body.roomId;
+    const userId = req.userId;
+    const user = await User.findById(userId);
+    const fileUrl = `/uploads/voice/${req.file.filename}`;
+
+    if (!roomId) {
+      return res.status(400).json({ error: "Не указана комната" });
+    }
+
+    const voiceFile = req.file;
+    if (!voiceFile) {
+      return res.status(400).json({ error: "Файл не загружен" });
+    }
+
+    if (!req.userId) {
+      return res.status(401).json({ error: "Токен недействителен" });
+    }
+
+    if (!user) {
+      return res.status(404).json({ error: "Пользователь не найден" });
+    }
+
+    const room = await Room.findById(roomId);
+    if (!room) {
+      return res.status(404).json({ error: "Комната не найдена" });
+    }
+
+    // Создаём запись сообщения в БД
+    const message = await Message.create(
+      "",          // text пустой
+      userId,      // sender_id
+      roomId,      // room_id
+      true,        // is_voice_message
+      fileUrl      // file_url
+    );
+
+    const payload = {
+      ...message,
+      user_id: userId,      // добавляем user_id для клиента
+      sender_name: user.name,
+      is_voice_message: true,
+      file_url: fileUrl
+    };
+    //global._io.to(String(roomId)).emit('newMessage', payload); //deepseek
+    io.to(String(roomId)).emit('newMessage', payload);
+
+    // Отправляем ответ клиенту с данными сообщения
+    return res.status(201).json(payload);
+  } catch (error) {
+    console.error("Ошибка в sendVoiceMessage:", error);
+    res.status(500).json({
+      error: "Ошибка отправки голосового сообщения",
+      details: "Проверьте логи сервера"
+    });
+  }
+};
+
+exports.deleteMessage = async (req, res) => {
+
+  try {
+    const { messageId } = req.params;
+
+    // Проверка прав доступа
+    const message = await Message.findById(messageId);
+    if (!message) {
+      return res.status(404).json({ error: "Сообщение не найдено" });
+    }
+
+    if (message.sender_id !== req.userId) {
+      return res.status(403).json({ error: "Вы можете удалять только свои сообщения" });
+    }
+
+    await Message.delete(messageId);
+    io.to(message.room_id).emit('message-deleted', { messageId });
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Ошибка удаления сообщения" });
+  }
+
+};
+
+exports.getMessages = async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const messages = await Message.findByRoom(roomId);
+
+    // Если сообщения пустые, проверим существование комнаты
+    if (messages.length === 0) {
+      const roomExists = await Room.findById(roomId);
+      if (!roomExists) {
+        return res.status(404).json({ error: "Комната не найдена" });
+      }
+    }
+
+    // Добавляем информацию об авторе
+    const messagesWithAuthors = await Promise.all(
+      messages.map(async msg => {
+        const user = await User.findById(msg.sender_id);
+        return {
+          ...msg,
+          user_name: user?.name || 'Неизвестный'
+        };
+      })
+    );
+
+    res.json(messages);
+  } catch (error) {
+    console.error('[ERROR] Ошибка получения сообщений:', error);
+    res.status(500).json({ error: 'Ошибка получения сообщений' });
+  }
+};
+
+
+===== server/controllers/message.controller.js =====
+// server/controllers/message.controller.js
+const Message = require('../models/message.model');
+
+exports.updateMessage = async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const { text } = req.body;
+    // проверяем владельца внутри модели
+    const updated = await Message.updateText(messageId, req.userId, text);
+    if (!updated) return res.status(403).json({ error: 'Нельзя редактировать чужое сообщение' });
+    global._io.emit('message-updated', { messageId, text });
+    res.json({ messageId, text });
+  } catch (e) {
+    res.status(500).json({ error: 'Ошибка при обновлении сообщения' });
+  }
+};
+
+exports.deleteMessage = async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const deleted = await Message.delete(messageId, req.userId);
+    if (!deleted) return res.status(403).json({ error: 'Нельзя удалять чужое сообщение' });
+    global._io.emit('message-deleted', { messageId });
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Ошибка при удалении сообщения' });
+  }
+};
+
+
+===== server/controllers/room.controller.js =====
+const Room = require("../models/room.model");
+
+exports.getAllRooms = async (req, res) => {
+  try {
+    const rooms = await Room.getAll();
+    res.json(rooms);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch rooms" });
+  }
+};
+
+exports.createRoom = async (req, res) => {
+  try {
+    const { name } = req.body;
+    const room = await Room.create(name, req.userId);
+    // Эмитим событие всем клиентам
+    global._io.emit('room-created', room);
+    res.status(201).json(room);
+  } catch (error) {
+    res.status(500).json({ error: "Ошибка создания комнаты" });
+  }
+};
+
+exports.getRoom = async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const room = await Room.findById(roomId);
+    if (!room) {
+      return res.status(404).json({ error: "Комната не найдена" });
+    }
+    res.json(room);
+  } catch (error) {
+    res.status(500).json({ error: "Ошибка получения комнаты" });
+  }
+};
+
+exports.deleteRoom = async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const isOwner = await Room.isOwner(roomId, req.userId);
+    if (!isOwner) return res.status(403).json({ error: "Только создатель может удалить комнату" });
+    const success = await Room.delete(roomId);
+    if (!success) return res.status(404).json({ error: "Комната не найдена" });
+    // Эмитим событие удаления
+    global._io.emit('room-deleted', { roomId: Number(roomId) });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Ошибка удаления комнаты" });
+  }
+};
+
+
+===== server/controllers/task.controller.js =====
+const Task = require('../models/task.model');
+
+exports.createTask = async (req, res) => {
+  try {
+    const { title, description, deadline } = req.body;
+    const task = await Task.create(title, description, req.userId, deadline);
+    res.status(201).json(task);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to create task' });
+  }
+};
+
+exports.getTasks = async (req, res) => {
+  try {
+    const tasks = await Task.findAllByUser(req.userId);
+    res.json(tasks);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch tasks' });
+  }
+};
+
+exports.updateTask = async (req, res) => {
+  try {
+    const { taskId } = req.params;
+    const { status } = req.body;
+    const task = await Task.updateStatus(taskId, status);
+    res.json(task);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update task' });
+  }
+};
+
+
+===== server/index.js =====
+const express = require('express');
+const http = require('http');
+const fs = require('fs');
+const pool = require('./config/db');
+const socketAuth = require('./middleware/socketAuth');
+const Message = require('./models/message.model');
+const User = require('./models/user.model');
+const path = require('path');
+const chatController = require('./controllers/chat.controller');
+const callService = require('./services/call.service');
+const messageRoutes = require('./routes/message.routes');
+
+pool.query('SELECT NOW()', (err) => {
+  if (err) console.error('PostgreSQL connection error:', err);
+  else console.log('PostgreSQL connected successfully');
+});
+
+const authRoutes = require('./routes/auth.routes');
+const app = express();
+
+// Middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use('/api/messages', messageRoutes);
+
+// CORS
+const cors = require('cors');
+app.use(cors({
+  origin: [
+    'http://localhost:3001',
+    'http://192.168.0.104:3001'
+  ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+}));
+
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Routes
+app.use('/api/auth', require('./routes/auth.routes'));
+app.use('/api/tasks', require('./routes/task.routes'));
+app.use('/api/chat', require('./routes/chat.routes'));
+app.use('/api/rooms', require('./routes/room.routes'));
+app.use('/api/calls', require('./routes/call.routes'));
+
+app.get('/api/profile', require('./middleware/auth'), (req, res) => {
+  res.json({ userId: req.userId });
+});
+app.get('/api/calls/active', (req, res) => {
+  res.json(Array.from(callService.activeCalls.entries()));
+});
+
+// uncaught exceptions
+process.on('uncaughtException', error => {
+  console.error(`[CRASH] Необработанная ошибка: ${error.message}`);
+  process.exit(1);
+});
+
+const server = http.createServer(app);
+const io = require('socket.io')(server, {
+  cors: {
+    origin: [
+      'http://localhost:3001',
+      'http://192.168.0.104:3001'
+    ],
+    methods: ['GET', 'POST'],
+    allowedHeaders: ['Authorization'],
+    credentials: true
+  },
+  transports: ['websocket', 'polling']
+});
+io.use(socketAuth);
+global._io = io;
+chatController.setIO(io);
+
+// Track active connections for conference
+const activeConnections = new Map(); // roomId -> Set(socket.id)
+
+io.on('connection', socket => {
+  console.log('New socket:', socket.id, 'userId:', socket.userId);
+
+  // Chat room join
+  socket.on('joinRoom', roomId => socket.join(roomId));
+
+  socket.on('sendMessage', async (data) => {
+    try {
+      const { text, roomId } = data;
+      if (!text?.trim()) return;
+
+      // Сохраняем в БД
+      const message = await Message.create(text, socket.userId, roomId);
+      // Берём имя отправителя
+      const user = await User.findById(socket.userId);
+
+      // Собираем полезную нагрузку
+      const payload = {
+        ...message,
+        sender_name: user.name
+      };
+
+      // Эмитим всем в комнате
+      io.to(roomId).emit('newMessage', payload);
+      console.log('📨 sendMessage:', payload);
+    } catch (err) {
+      console.error('Ошибка в sendMessage:', err);
+    }
+  });
+
+  // 1:1 call and chat logic omitted…
+
+  // Conference events
+  socket.on('create-conference', roomId => {
+    socket.join(roomId);
+    activeConnections.set(roomId, new Set([socket.id]));
+    socket.to(roomId).emit('conference-started', { roomId });
+  });
+
+  socket.on('join-conference', ({ roomId, userId, username }) => {
+    socket.join(roomId);
+    // add to active set
+    const set = activeConnections.get(roomId) || new Set();
+    set.add(socket.id);
+    activeConnections.set(roomId, set);
+    socket.to(roomId).emit('new-conference-participant', { peerId: socket.id, initiatorId: userId });
+  });
+
+  socket.on('leave-conference', ({ roomId }) => {
+    socket.leave(roomId);
+    const set = activeConnections.get(roomId);
+    if (set) {
+      set.delete(socket.id);
+      if (set.size === 0) activeConnections.delete(roomId);
+      else activeConnections.set(roomId, set);
+    }
+    socket.to(roomId).emit('conference-participant-left', { peerId: socket.id });
+  });
+
+  // Screen share handlers at top-level
+  socket.on('screen-share', ({ roomId, peerId }) => {
+    console.log(`⚙️  Сервер получил screen-share от ${peerId} в комнате ${roomId}`);
+    socket.to(roomId).emit('screen-share', { peerId });
+  });
+  socket.on('screen-share-stop', ({ roomId, peerId }) => {
+    console.log(`⚙️  Сервер получил screen-share-stop от ${peerId} в комнате ${roomId}`);
+    socket.to(roomId).emit('screen-share-stop', { peerId });
+  });
+  socket.on('screen-share-join', ({ roomId, targetPeerId }) => {
+    console.log(`⚙️  Сервер получил screen-share-join от ${socket.id}, шлёт screen-share-joined -> ${targetPeerId}`);
+    io.to(targetPeerId).emit('screen-share-joined', { requesterId: socket.id });
+  });
+
+  // WebRTC signaling
+  socket.on('webrtc-signal', ({ target, senderId, signal, roomId }) => {
+    io.to(target).emit('webrtc-signal', { senderId, signal, roomId });
+  });
+
+  // Disconnect
+  socket.on('disconnect', () => {
+    // clean up conference
+    for (const [roomId, set] of activeConnections) {
+      if (set.has(socket.id)) {
+        set.delete(socket.id);
+        socket.to(roomId).emit('conference-participant-left', { peerId: socket.id });
+        if (set.size === 0) activeConnections.delete(roomId);
+      }
+    }
+  });
+});
+
+const PORT = 3000;
+// Привязываем к 0.0.0.0, чтобы слушать на всех интерфейсах
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server listening on 0.0.0.0:${PORT}`);
+});
+
+// ensure uploads dir
+fs.mkdirSync(path.join(__dirname, 'uploads'), { recursive: true });
+
+
+===== server/middleware/auth.js =====
+const jwt = require('jsonwebtoken');
+const User = require('../models/user.model');
+
+module.exports = async (req, res, next) => {
+  const token = req.header('Authorization')?.replace('Bearer ', '');
+
+  if (!token) return res.status(401).json({ error: 'Access denied' });
+
+  try {
+    const decoded = jwt.verify(token, 'your_jwt_secret');
+    const user = await User.findById(decoded.userId);
+    req.user = user;
+    req.userId = decoded.userId; // Сохраняем ID пользователя
+    next();
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+  } catch (error) {
+    res.status(400).json({ error: 'Invalid token' });
+  }
+};
+
+
+===== server/middleware/logger.js =====
+module.exports = (req, res, next) => {
+  const start = Date.now();
+
+  // Логирование входящего запроса
+  console.log(`[REQUEST] ${req.method} ${req.url}`);
+
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    console.log(`[RESPONSE] ${req.method} ${req.url} - Status: ${res.statusCode} (${duration}ms)`);
+  });
+
+  next();
+};
+
+
+===== server/middleware/socketAuth.js =====
+const jwt = require('jsonwebtoken');
+
+const socketAuth = (socket, next) => {
+  try {
+    const token = socket.handshake.auth.token;
+    if (!token) {
+      return next(new Error('Access denied: No token provided'));
+    }
+
+    const decoded = jwt.verify(token, 'your_jwt_secret');
+    socket.userId = decoded.userId; // сохраняем userId для дальнейшего использования
+    next();
+  } catch (error) {
+    next(new Error('Invalid token'));
+  }
+};
+
+module.exports = socketAuth;
+
+
+===== server/middleware/upload.js =====
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
+
+// Автоматическое создание папки
+const voiceDir = path.join(__dirname, "../uploads/voice");
+fs.mkdirSync(voiceDir, { recursive: true });
+
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, voiceDir); // Используем абсолютный путь
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const cleanName = file.originalname.replace(/[^a-zA-Z0-9\.]/g, '_');
+    cb(null, uniqueSuffix + '-' + cleanName);
+  }
+});
+
+const upload = multer({
+  storage: storage,
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('audio/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Только аудиофайлы разрешены'));
+    }
+  }
+});
+
+module.exports = upload;
+
+
+===== server/models/message.model.js =====
+const pool = require('../config/db');
+
+class Message {
+  static async create(text, senderId, roomId, isVoiceMessage = false, fileUrl = null) {
+    try {
+      if (isVoiceMessage) text = "";
+      const { rows } = await pool.query(
+        `INSERT INTO messages (text, sender_id, room_id, is_voice_message, file_url)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+        [text, senderId, roomId, isVoiceMessage, fileUrl]
+      );
+      console.log('[DB] Сообщение сохранено:', rows[0]); // Логирование
+      return rows[0];
+    } catch (error) {
+      console.error('[DB] Ошибка сохранения:', error);
+      throw error;
+    }
+  }
+
+  static async findByRoom(roomId) {
+    const { rows } = await pool.query(
+      `SELECT 
+      m.id,
+      m.text,
+      m.sender_id,
+      m.room_id,
+      m.is_voice_message,
+      m.file_url,
+      m.created_at,
+      u.name as user_name
+    FROM messages m
+    LEFT JOIN users u ON m.sender_id = u.id
+    WHERE m.room_id = $1
+    ORDER BY m.created_at ASC`,
+      [roomId]
+    );
+    return rows;
+  }
+
+  static async delete(messageId) {
+    const { rowCount } = await pool.query(
+      "DELETE FROM messages WHERE id = $1",
+      [messageId]
+    );
+    return rowCount > 0;
+  }
+
+  static async findById(messageId) {
+    const { rows } = await pool.query(
+      "SELECT * FROM messages WHERE id = $1",
+      [messageId]
+    );
+    return rows[0];
+  }
+
+}
+
+module.exports = Message;
+
+
+===== server/models/room.model.js =====
+const pool = require("../config/db");
+
+class Room {
+  static async create(name, creatorId) {
+    const { rows } = await pool.query(
+      "INSERT INTO rooms (name, creator_id) VALUES ($1, $2) RETURNING *",
+      [name, creatorId]
+    );
+    return rows[0];
+  }
+
+  static async getAll() {
+    const { rows } = await pool.query("SELECT * FROM rooms ORDER BY id ASC");
+    return rows;
+  }
+
+  static async findById(roomId) {
+    const { rows } = await pool.query("SELECT * FROM rooms WHERE id = $1", [roomId]);
+    return rows[0];
+  }
+
+  static async delete(roomId) {
+    const { rowCount } = await pool.query(
+      "DELETE FROM rooms WHERE id = $1 RETURNING *",
+      [roomId]
+    );
+    return rowCount > 0;
+  }
+
+  static async isOwner(roomId, userId) {
+    const { rows } = await pool.query(
+      "SELECT creator_id FROM rooms WHERE id = $1",
+      [roomId]
+    );
+    return rows[0]?.creator_id === userId;
+  }
+}
+
+module.exports = Room;
+
+
+===== server/models/task.model.js =====
+const pool = require('../config/db');
+class Task {
+  static async create(title, description, assigneeId, deadline) {
+    const { rows } = await pool.query(
+      `INSERT INTO tasks (title, description, status, assignee_id, deadline)
+       VALUES ($1, $2, 'todo', $3, $4) RETURNING *`,
+      [title, description, assigneeId, deadline]
+    );
+    return rows[0];
+  }
+
+  static async findAllByUser(userId) {
+    const { rows } = await pool.query(
+      `SELECT * FROM tasks WHERE assignee_id = $1`,
+      [userId]
+    );
+    return rows;
+  }
+
+  static async updateStatus(taskId, newStatus) {
+    const { rows } = await pool.query(
+      `UPDATE tasks SET status = $1 WHERE id = $2 RETURNING *`,
+      [newStatus, taskId]
+    );
+    return rows[0];
+  }
+}
+
+module.exports = Task;
+
+
+===== server/models/user.model.js =====
+const pool = require('../config/db');
+class User {
+  static async findByEmail(email) {
+    try {
+      console.log(`[DB] Поиск пользователя по email: ${email}`);
+      const { rows } = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+      return rows[0];
+    } catch (error) {
+      console.error(`[DB] Ошибка поиска пользователя: ${error.message}`);
+      throw error;
+    }
+  }
+
+  static async findById(id) {
+    try {
+      const { rows } = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
+      return rows[0];
+    } catch (error) {
+      console.error(`[DB] Ошибка поиска пользователя: ${error.message}`);
+      throw error;
+    }
+  }
+
+  static async createUser(name, email, passwordHash) {
+    const { rows } = await pool.query(
+      'INSERT INTO users (name, email, password_hash) VALUES ($1, $2, $3) RETURNING *',
+      [name, email, passwordHash]
+    );
+    return rows[0];
+  }
+}
+module.exports = User;
+
+
+===== server/node =====
+
+
+===== server/package.json =====
+{
+  "name": "zvonok",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "bcrypt": "^5.1.1",
+    "buffer": "^6.0.3",
+    "cors": "^2.8.5",
+    "crypto-browserify": "^3.12.1",
+    "express": "^5.1.0",
+    "express-router": "^0.0.1",
+    "jsonwebtoken": "^9.0.2",
+    "mediasoup": "^3.15.7",
+    "multer": "^1.4.5-lts.2",
+    "path-to-regexp": "^8.2.0",
+    "pg": "^8.15.6",
+    "process": "^0.11.10",
+    "simple-peer": "^9.11.1",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1",
+    "stream-browserify": "^3.0.0",
+    "window": "^4.2.7"
+  }
+}
+
+
+===== server/routes/auth.routes.js =====
+const express = require('express');
+const router = express.Router();
+const authController = require('../controllers/auth.controller');
+const authMiddleware = require('../middleware/auth');
+
+router.get('/profile', authMiddleware, async (req, res) => {
+    try {
+        // Получаем полные данные пользователя из БД
+        const user = await User.findById(req.user.id);
+        if (!user) {
+            return res.status(404).json({ error: "User not found" });
+        }
+
+        // Отправляем данные пользователя
+        res.json({
+            user: {
+                id: user.id,
+                name: user.name,
+                email: user.email
+            }
+        });
+
+    } catch (error) {
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+router.post('/register', authController.register);
+router.post('/login', authController.login);
+
+module.exports = router;
+
+
+===== server/routes/call.routes.js =====
+const express = require('express');
+const router = express.Router();
+const authMiddleware = require('../middleware/auth');
+const activeCalls = require('../services/call.service');
+
+router.post('/initiate', authMiddleware, (req, res) => {
+  const { targetUserId, roomId } = req.body;
+  const callId = activeCalls.initiateCall(req.userId, targetUserId, roomId);
+  res.json({ callId });
+});
+
+router.post('/accept', authMiddleware, (req, res) => {
+  const { callId } = req.body;
+  const success = activeCalls.acceptCall(callId, req.userId);
+  res.json({ success });
+});
+
+module.exports = router;
+
+
+===== server/routes/chat.routes.js =====
+const express = require('express');
+const router = express.Router();
+const chatController = require('../controllers/chat.controller');
+const authMiddleware = require('../middleware/auth');
+const upload = require("../middleware/upload");
+
+router.post('/messages', authMiddleware, chatController.sendMessage);
+router.get('/rooms/:roomId/messages', authMiddleware, chatController.getMessages);
+router.delete('/messages/:messageId', authMiddleware, chatController.deleteMessage);
+router.post('/voice', authMiddleware,
+    upload.single('voice'),
+    (req, res, next) => {
+        console.log("Middleware: Проверка аутентификации");
+        next();
+    },
+    (req, res, next) => {
+        console.log("Файл:", req.file); // Добавьте лог файла
+        req.body.roomId = req.body.roomId;
+        next();
+    },
+    chatController.sendVoiceMessage
+);
+
+module.exports = router;
+
+
+===== server/routes/message.routes.js =====
+const express = require('express');
+const router = express.Router();
+const { updateMessage, deleteMessage } = require('../controllers/message.controller');
+const auth = require('../middleware/auth');
+
+router.put('/:messageId', auth, updateMessage);
+router.delete('/:messageId', auth, deleteMessage);
+
+module.exports = router;
+
+
+===== server/routes/room.routes.js =====
+const express = require("express");
+const router = express.Router();
+const roomController = require("../controllers/room.controller");
+const authMiddleware = require("../middleware/auth");
+
+router.post("/", authMiddleware, roomController.createRoom);
+router.get("/:roomId", authMiddleware, roomController.getRoom);
+router.get("/", authMiddleware, roomController.getAllRooms);
+router.delete("/:roomId", authMiddleware, roomController.deleteRoom);
+
+module.exports = router;
+
+
+===== server/routes/task.routes.js =====
+const express = require('express');
+const router = express.Router();
+const taskController = require('../controllers/task.controller');
+const authMiddleware = require('../middleware/auth');
+
+router.post('/', authMiddleware, taskController.createTask);
+router.get('/', authMiddleware, taskController.getTasks);
+router.patch('/:taskId', authMiddleware, taskController.updateTask);
+
+module.exports = router;
+
+
+===== server/services/call.service.js =====
+class CallService {
+  constructor() {
+    this.activeCalls = new Map(); // callId -> { initiatorId, targetId, roomId, status }
+    this.conferenceRooms = new Map(); // roomId → Set<userId>
+  }
+
+  // Методы для 1:1 звонков
+  initiateCall(initiatorId, targetId, roomId) {
+    const callId = `call_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    this.activeCalls.set(callId, {
+      initiatorId,
+      targetId,
+      roomId,
+      status: 'ringing'
+    });
+    return callId;
+  }
+
+  acceptCall(callId, userId) {
+    const call = this.activeCalls.get(callId);
+    if (call && call.targetId === userId) {
+      call.status = 'active';
+      return true;
+    }
+    return false;
+  }
+
+  // Методы для конференций
+  joinConference(roomId, userId) {
+    if (!this.conferenceRooms.has(roomId)) {
+      this.conferenceRooms.set(roomId, new Set());
+    }
+    this.conferenceRooms.get(roomId).add(userId);
+  }
+
+  leaveConference(roomId, userId) {
+    if (this.conferenceRooms.has(roomId)) {
+      this.conferenceRooms.get(roomId).delete(userId);
+      if (this.conferenceRooms.get(roomId).size === 0) {
+        this.conferenceRooms.delete(roomId);
+      }
+    }
+  }
+
+  // Дополнительный метод для проверки конференции
+  getConferenceParticipants(roomId) {
+    const participants = this.conferenceRooms.get(roomId);
+    return participants ? Array.from(participants) : [];
+  }
+}
+
+module.exports = new CallService();
+
+
+===== server/services/webrtc.service.js =====
+class WebRTCService {
+  constructor() {
+    this.iceServers = [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { 
+        urls: 'turn:your-turn-server.com',
+        username: 'user',
+        credential: 'password'
+      }
+    ];
+  }
+
+  getICEServers() {
+    return this.iceServers;
+  }
+
+  generateRoomId() {
+    return Math.random().toString(36).substr(2, 9);
+  }
+}
+
+module.exports = new WebRTCService();
+
+
+===== server/sql/sql.sql =====
+-- Создаем тип для статуса задачи (если используете ENUM)
+CREATE TYPE task_status AS ENUM ('todo', 'in_progress', 'done');
+
+-- Таблица пользователей
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    --org_id INTEGER,  -- Если есть таблица organizations, добавьте FOREIGN KEY
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Таблица комнат (чаты/конференции)
+CREATE TABLE rooms (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255),
+    type VARCHAR(20) CHECK (type IN ('chat', 'conference')),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Таблица сообщений
+CREATE TABLE messages (
+    id SERIAL PRIMARY KEY,
+    text TEXT,
+    sender_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    room_id INTEGER REFERENCES rooms(id) ON DELETE CASCADE,
+    is_voice_message BOOLEAN DEFAULT FALSE,
+    file_url VARCHAR(512),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Таблица задач (вариант с ENUM)
+CREATE TABLE tasks (
+    id SERIAL PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    status task_status DEFAULT 'todo',
+    assignee_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    deadline TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Индексы для ускорения поиска
+CREATE INDEX idx_messages_room ON messages(room_id);
+CREATE INDEX idx_tasks_assignee ON tasks(assignee_id);
+
+

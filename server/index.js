@@ -43,6 +43,7 @@ app.use('/api/tasks', require('./routes/task.routes'));
 app.use('/api/chat', require('./routes/chat.routes'));
 app.use('/api/rooms', require('./routes/room.routes'));
 app.use('/api/calls', require('./routes/call.routes'));
+app.use('/api/users', usersRouter);
 
 app.get('/api/profile', require('./middleware/auth'), (req, res) => {
   res.json({ userId: req.userId });

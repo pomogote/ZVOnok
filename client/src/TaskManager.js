@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { fetchTasks, createTask, updateTask } from './api';
+import { fetchUsers, fetchTasks, createTask, updateTask } from './api';
 
 export default function TaskManager({ token, userId }) {
+    const [users, setUsers] = useState([]);
+    const [selectedAssignees, setSelectedAssignees] = useState([]);
     const [tasks, setTasks] = useState([]);
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
@@ -9,7 +11,6 @@ export default function TaskManager({ token, userId }) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
 
-    // Универсальная функция для обработки ответа от API
     function normalizeList(response) {
         if (Array.isArray(response)) return response;
         if (response && Array.isArray(response.tasks)) return response.tasks;
@@ -17,7 +18,6 @@ export default function TaskManager({ token, userId }) {
         return [];
     }
 
-    // Универсальная функция для извлечения объекта задачи
     function normalizeItem(response) {
         if (!response) return null;
         if (response.task) return response.task;
@@ -25,7 +25,6 @@ export default function TaskManager({ token, userId }) {
         return response;
     }
 
-    // Загрузка задач
     async function loadTasks() {
         setLoading(true);
         try {
@@ -42,28 +41,43 @@ export default function TaskManager({ token, userId }) {
     }
 
     useEffect(() => {
-        if (token) loadTasks();
+        if (token) {
+            fetchUsers(token).then(setUsers);
+            loadTasks();
+        }
     }, [token]);
 
-    // Создание задачи
+    const handleAssigneeToggle = id => {
+        setSelectedAssignees(prev =>
+            prev.includes(id)
+                ? prev.filter(x => x !== id)
+                : [...prev, id]
+        );
+    };
+
     async function handleCreate(e) {
         e.preventDefault();
         setError(null);
         try {
-            const payload = { title, description, deadline, assignee_id: userId };
+            const payload = {
+                title,
+                description,
+                deadline,
+                assigneeIds: selectedAssignees
+            };
             const result = await createTask(payload, token);
             const newTask = normalizeItem(result);
             if (newTask) setTasks(prev => [newTask, ...prev]);
             setTitle('');
             setDescription('');
             setDeadline('');
+            setSelectedAssignees([]);
         } catch (err) {
             console.error(err);
             setError('Ошибка при создании задачи');
         }
     }
 
-    // Обновление статуса задачи
     async function handleStatus(task) {
         const next = { todo: 'in_progress', in_progress: 'done', done: 'todo' }[task.status];
         try {
@@ -106,6 +120,19 @@ export default function TaskManager({ token, userId }) {
                     onChange={e => setDeadline(e.target.value)}
                     required
                 />
+                <div>
+                    <p className="font-medium">Исполнители:</p>
+                    {users.map(u => (
+                        <label key={u.id} className="block">
+                            <input
+                                type="checkbox"
+                                checked={selectedAssignees.includes(u.id)}
+                                onChange={() => handleAssigneeToggle(u.id)}
+                            />{' '}
+                            {u.name || u.email || u.username || `User ${u.id}`}
+                        </label>
+                    ))}
+                </div>
                 <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
                     Создать задачу
                 </button>
@@ -116,32 +143,33 @@ export default function TaskManager({ token, userId }) {
 
             {!loading && tasks.length > 0 && (
                 <div className="space-y-3">
-                    {tasks.map((task, idx) =>
-                        task ? (
-                            <div
-                                key={task.id || idx}
-                                className="bg-white p-4 rounded shadow flex justify-between items-center"
-                            >
-                                <div>
-                                    <h3 className="font-semibold">{task.title}</h3>
-                                    <p className="text-sm">{task.description}</p>
-                                    <p className="text-xs text-gray-500">
-                                        Дедлайн: {new Date(task.deadline).toLocaleDateString()}
-                                    </p>
-                                    <p className="uppercase text-xs mt-1">Статус: {task.status}</p>
-                                    <p className="text-xs text-gray-600">
-                                        Назначено: {task.assignee_id === userId ? 'Вам' : task.assignee_id}
-                                    </p>
-                                </div>
-                                <button
-                                    onClick={() => handleStatus(task)}
-                                    className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700"
-                                >
-                                    {task.status === 'done' ? 'Возврат в TODO' : 'След. статус'}
-                                </button>
+                    {tasks.map((task, idx) => (
+                        <div
+                            key={task.id || idx}
+                            className="bg-white p-4 rounded shadow flex justify-between items-center"
+                        >
+                            <div>
+                                <h3 className="font-semibold">{task.title}</h3>
+                                <p className="text-sm">{task.description}</p>
+                                <p className="text-xs text-gray-500">
+                                    Дедлайн: {new Date(task.deadline).toLocaleDateString()}
+                                </p>
+                                <p className="uppercase text-xs mt-1">Статус: {task.status}</p>
+                                <p className="text-xs text-gray-600">
+                                    Назначено: {task.assigneeIds?.map(id => {
+                                        const user = users.find(u => u.id === id);
+                                        return user?.name || `User ${id}`;
+                                    }).join(', ') || '—'}
+                                </p>
                             </div>
-                        ) : null
-                    )}
+                            <button
+                                onClick={() => handleStatus(task)}
+                                className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700"
+                            >
+                                {task.status === 'done' ? 'Возврат в TODO' : 'След. статус'}
+                            </button>
+                        </div>
+                    ))}
                 </div>
             )}
         </div>
