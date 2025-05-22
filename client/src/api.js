@@ -57,3 +57,18 @@ export const deleteMessage = (token, messageId) => {
         headers: { Authorization: `Bearer ${token}` }
     });
 };
+
+export const fetchTasks = (token) => {
+    axios.get(`${API_URL}/api/tasks`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(res => res.data);
+};
+
+export const createTask = (task, token) => {
+    axios.post(`${API_URL}/api/tasks`, task, { headers: { Authorization: `Bearer ${token}` } })
+        .then(res => res.data);
+};
+
+export const updateTask = (taskId, status, token) => {
+    axios.patch(`${API_URL}/api/tasks/${taskId}`, { status }, { headers: { Authorization: `Bearer ${token}` } })
+        .then(res => res.data);
+};
