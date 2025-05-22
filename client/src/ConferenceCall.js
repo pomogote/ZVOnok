@@ -36,6 +36,8 @@ export default function ConferenceCall({ socket, userId, username = 'User', room
         };
         init();
 
+        console.log("🔌 Socket connected, id=", socket.id);
+
         socket.on('new-conference-participant', ({ peerId }) => {
             if (peerId === socket.id) return;
             if (peersRef.current.some(p => p.peerId === peerId)) return;
@@ -77,9 +79,11 @@ export default function ConferenceCall({ socket, userId, username = 'User', room
 
         // Screen share
         socket.on('screen-share', ({ peerId }) => {
+            console.log("📡 Клиент B получил screen-share от", peerId);
             setScreenSharingByPeer(prev => ({ ...prev, [peerId]: true }));
         });
         socket.on('screen-share-stop', ({ peerId }) => {
+            console.log("📴 Клиент B получил screen-share-stop от", peerId);
             setScreenSharingByPeer(prev => {
                 const next = { ...prev };
                 delete next[peerId];
@@ -87,6 +91,7 @@ export default function ConferenceCall({ socket, userId, username = 'User', room
             });
         });
         socket.on('screen-share-joined', ({ requesterId }) => {
+            console.log("👀 Клиент A получил screen-share-joined от", requesterId);
             const peerObj = peersRef.current.find(p => p.peerId === requesterId);
             if (peerObj && screenTrack && cameraTrack && !peerObj.peer.destroyed) {
                 try {

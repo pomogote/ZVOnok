@@ -138,12 +138,15 @@ io.on('connection', socket => {
 
   // Screen share handlers at top-level
   socket.on('screen-share', ({ roomId, peerId }) => {
+    console.log(`⚙️  Сервер получил screen-share от ${peerId} в комнате ${roomId}`);
     socket.to(roomId).emit('screen-share', { peerId });
   });
   socket.on('screen-share-stop', ({ roomId, peerId }) => {
+    console.log(`⚙️  Сервер получил screen-share-stop от ${peerId} в комнате ${roomId}`);
     socket.to(roomId).emit('screen-share-stop', { peerId });
   });
   socket.on('screen-share-join', ({ roomId, targetPeerId }) => {
+    console.log(`⚙️  Сервер получил screen-share-join от ${socket.id}, шлёт screen-share-joined -> ${targetPeerId}`);
     io.to(targetPeerId).emit('screen-share-joined', { requesterId: socket.id });
   });
 
