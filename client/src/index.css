@@ -1,0 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Rubik+Mono+One&family=Rubik+One&display=swap');
+
+body {
+  @apply bg-background text-text font-sans;
+}
