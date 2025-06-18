@@ -7,9 +7,10 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "react-scripts test",
-    "eject": "react-scripts eject" 
+    "eject": "react-scripts eject"
   },
   "dependencies": {
+    "@vitejs/plugin-react": "^4.5.2",
     "axios": "^1.10.0",
     "buffer": "^6.0.3",
     "crypto-browserify": "^3.12.1",
